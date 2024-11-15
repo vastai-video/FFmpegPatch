@@ -71,7 +71,7 @@ mkdir -p ${VASTAI_STREAM_INSTALL}/lib
 
 # eg: vmpp.tar.gz
 tar -zxvf vmpp.tar.gz
-cp -r vmpp/lib/dri ${VASTAI_STREAM_INSTALL}/lib
+cp -r lib/ ${VASTAI_STREAM_INSTALL}
 ```
 
 2. Install driver package and set env. See the official release version.
