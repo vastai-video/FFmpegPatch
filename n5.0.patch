@@ -2318,7 +2318,7 @@ index 0000000..b665b09
 +}
 diff --git a/doc/examples/vastapi_transcode.c b/doc/examples/vastapi_transcode.c
 new file mode 100644
-index 0000000..6455982
+index 0000000..93ddcb7
 --- /dev/null
 +++ b/doc/examples/vastapi_transcode.c
 @@ -0,0 +1,1719 @@
@@ -3054,7 +3054,7 @@ index 0000000..6455982
 +                                            (encoder_ctx[chan]->framerate.num / encoder_ctx[chan]->framerate.den);
 +            }
 +        } else {
-+            if (!input_params->vfr_fps)
++            if ((!input_params->vfr_fps) && (strcmp(input_params->encoder, "av1_vastapi") != 0))
 +                av_packet_rescale_ts(&enc_pkt, ifmt_ctx[chan]->streams[video_stream[chan]]->time_base,
 +                                     ofmt_ctx[chan]->streams[0]->time_base);
 +        }
@@ -4043,7 +4043,7 @@ index 0000000..6455982
 +}
 diff --git a/doc/examples/vastapi_varres_transcode.c b/doc/examples/vastapi_varres_transcode.c
 new file mode 100644
-index 0000000..fcf6694
+index 0000000..b9b8707
 --- /dev/null
 +++ b/doc/examples/vastapi_varres_transcode.c
 @@ -0,0 +1,1868 @@
@@ -4725,13 +4725,13 @@ index 0000000..fcf6694
 +    enc_pkt.pts  = 0;
 +    for (;;) {
 +        while ((ret = avcodec_receive_packet(encoder_ctx[chan], &enc_pkt)) == AVERROR(EAGAIN)) {
-+            ret = avcodec_send_frame(encoder_ctx[chan], NULL);
-+            if (ret < 0) {
-+                return ret;
++            int send_ret = avcodec_send_frame(encoder_ctx[chan], NULL);
++            if (send_ret < 0) {
++                return send_ret;
 +            }
 +        }
 +
-+        if (ret < 0 && ret != AVERROR_EOF) {
++        if (ret < 0 || (ret == AVERROR_EOF && enc_pkt.size == 0)) {
 +            return ret;
 +        }
 +
@@ -4856,7 +4856,7 @@ index 0000000..fcf6694
 +                                            (encoder_ctx[chan]->framerate.num / encoder_ctx[chan]->framerate.den);
 +            }
 +        } else {
-+            if (!input_params->vfr_fps)
++            if ((!input_params->vfr_fps) && (strcmp(input_params->encoder, "av1_vastapi") != 0))
 +                av_packet_rescale_ts(&enc_pkt, ifmt_ctx[chan]->streams[video_stream[chan]]->time_base,
 +                                     ofmt_ctx[chan]->streams[0]->time_base);
 +        }
@@ -5915,6 +5915,19 @@ index 0000000..fcf6694
 +
 +    return ret;
 +}
+diff --git a/ffbuild/version.sh b/ffbuild/version.sh
+index edc4dd3..e0b5904 100755
+--- a/ffbuild/version.sh
++++ b/ffbuild/version.sh
+@@ -7,7 +7,7 @@ if ! test "$revision"; then
+     if (cd "$1" && grep git RELEASE 2> /dev/null >/dev/null) ; then
+         revision=$(cd "$1" && git describe --tags --match N 2> /dev/null)
+     else
+-        revision=$(cd "$1" && git describe --tags --always 2> /dev/null)
++        revision=$(cd "$1" && git describe --tags --always --long 2> /dev/null)
+     fi
+ fi
+ 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
 old mode 100644
 new mode 100755
@@ -6724,10 +6737,10 @@ index 0000000..61c3c4e
 +};
 diff --git a/libavcodec/vastapi_decode.c b/libavcodec/vastapi_decode.c
 new file mode 100644
-index 0000000..3266edc
+index 0000000..0936908
 --- /dev/null
 +++ b/libavcodec/vastapi_decode.c
-@@ -0,0 +1,498 @@
+@@ -0,0 +1,499 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -7222,7 +7235,8 @@ index 0000000..3266edc
 +    VASTAPIDecodeContext *ctx  = avctx->internal->hwaccel_priv_data;
 +    VastapiFunctions     *func = (VastapiFunctions *)ctx->decCtx.vst_func;
 +
-+    func->vastapiDecUnint(&ctx->decCtx);
++    if(func != NULL)
++        func->vastapiDecUnint(&ctx->decCtx);
 +
 +    return 0;
 +}
@@ -7296,11 +7310,11 @@ index 0000000..a813187
 +
 +#endif /* AVCODEC_VASTAPI_DECODE_H */
 diff --git a/libavcodec/vastapi_encode.c b/libavcodec/vastapi_encode.c
-new file mode 100644
-index 0000000..58c5d8a
+new file mode 100755
+index 0000000..fcd0318
 --- /dev/null
 +++ b/libavcodec/vastapi_encode.c
-@@ -0,0 +1,4713 @@
+@@ -0,0 +1,4645 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -8144,34 +8158,10 @@ index 0000000..58c5d8a
 +
 +    if (frame) {
 +        int64_t pkt_duration = 0;
-+        av_log(avctx, AV_LOG_DEBUG, "Input frame: %ux%u (%" PRId64 ").%d\n", frame->width, frame->height, frame->pts,
-+               frame->pkt_duration);
-+
-+        if (ctx->input_order == 0) {
-+            if (!frame->time_base.den || !frame->time_base.num) {
-+                ctx->vast_param->in_tbn = av_q2d(avctx->framerate);
-+            } else {
-+                ctx->vast_param->in_tbn = 1 / av_q2d(frame->time_base);
-+            }
-+        }
-+        av_log(avctx, AV_LOG_DEBUG, "input tbn:%d,frame time_base=%d/%d,avctx time_base=%d/%d\n",
-+               ctx->vast_param->in_tbn, frame->time_base.den, frame->time_base.num, avctx->time_base.den,
-+               avctx->time_base.num);
-+
-+        if (ctx->vast_param->vfr) {
-+            if (avctx->time_base.den) {
-+                if (ctx->input_order)
-+                    pkt_duration =
-+                        (frame->pts - ctx->pic_end->pts) *
-+                        ((double)ctx->vast_param->in_tbn * (double)avctx->time_base.num / (double)avctx->time_base.den);
-+                else
-+                    pkt_duration = abs(frame->pts) * ((double)ctx->vast_param->in_tbn * (double)avctx->time_base.num /
-+                                                      (double)avctx->time_base.den);
-+            } else {
-+                pkt_duration = 0;
-+            }
-+            av_log(avctx, AV_LOG_DEBUG, "no input frame->pkt_duration=%d\n", pkt_duration);
-+        }
++        av_log(avctx, AV_LOG_DEBUG, "Input frame: %ux%u (%" PRId64 ").%d type %d\n", frame->width, frame->height, frame->pts,
++               frame->pkt_duration,frame->pict_type);
++        
++        pkt_duration = func->vastapiEncCalDurPar(ctx, frame->time_base, frame->pts);
 +
 +        err = vastapi_encode_check_frame(avctx, frame);
 +        if (err < 0)
@@ -8231,63 +8221,8 @@ index 0000000..58c5d8a
 +#else
 +        av_frame_move_ref(pic->input_image, frame);
 +#endif
-+
-+        if (ctx->vast_param->vfr) {
-+            if (pkt_duration == 0) {
-+                pic->timebaseNum = avctx->time_base.den; // AVCodecContext->time_base is 1/framerate
-+                pic->timebaseDen = avctx->time_base.num;
-+                av_log(avctx, AV_LOG_DEBUG, "pkt_duration is 0 set pic->timebase=%d-%d\n", pic->timebaseDen,
-+                       pic->timebaseNum);
-+            } else {
-+                av_reduce(&pic->timebaseNum, &pic->timebaseDen, ctx->vast_param->in_tbn, pkt_duration, 65535);
-+            }
-+        }
-+
-+        int32_t delayGop;
-+        if (ctx->vast_param->adaptiveGOPEn) {
-+            delayGop = av_log2(MAX_ADAPTIVE_GOP_SIZE);
-+        } else {
-+            delayGop = av_log2(ctx->vast_param->brc.gop_size);
-+        }
-+        int delay1pass = MAX_CORE_NUM - 1;
-+        int delay2pass = CUTREE_BUFFER_CNT(ctx->vast_param->lookaheadDepth, ctx->gop_size);
-+        // if (ctx->vast_param->brc.gop_size > 0 && ctx->vast_param->brc.gop_size <= 8 && ctx->vast_param->multimode !=
-+        // VA_MULTI_CORE_MODE)
-+        //     delay2pass = ctx->vast_param->lookaheadDepth + ctx->vast_param->brc.gop_size; // ndelay value in vemcu
-+        //     should also be modified
-+        if (ctx->vast_param->multimode == VA_MULTI_CORE_MODE) {
-+        } else if (ctx->vast_param->brc.gop_size > 0 && ctx->vast_param->brc.gop_size <= 8) {
-+            delay2pass = MAX(ctx->vast_param->brc.gop_size + 1,
-+                             ctx->vast_param->lookaheadDepth); // ndelay value in vemcu should also be modified
-+        } else if (ctx->vast_param->brc.gop_size == 0) {
-+            delay2pass = MAX(5, ctx->vast_param->lookaheadDepth); // ndelay value in vemcu should also be modified
-+        }
-+
-+        if (ctx->input_order == 0)
-+            ctx->first_pts = pic->pts;
-+        if (ctx->input_order == delayGop)
-+            ctx->dts_pts_diff = pic->pts - ctx->first_pts;
-+
-+        if (ctx->input_order == 1) {
-+            ctx->dts_pts_scale = pic->pts - ctx->first_pts;
-+        }
-+        if (!ctx->dts_pts_scale)
-+            ctx->dts_pts_scale = 1;
-+        av_log(avctx, AV_LOG_DEBUG, "ctx->dts_pts_scale=%d,ctx->dts_pts_diff=%d\n", ctx->dts_pts_scale,
-+               ctx->dts_pts_diff);
-+
-+        if (delayGop > 0) {
-+            if (ctx->vast_param->multimode == VA_MULTI_CORE_MODE &&
-+                !((avctx->width * avctx->height < 256 * 256 * 2 * 2 && ctx->vast_param->lookaheadDepth > 0) ||
-+                  (avctx->width * avctx->height < 256 * 256 && ctx->vast_param->lookaheadDepth == 0))) {
-+                ctx->ts_ring[ctx->input_order % (3 * (delay2pass + delay1pass))] = pic->pts;
-+            } else {
-+                if (ctx->vast_param->lookaheadDepth > 0)
-+                    ctx->ts_ring[ctx->input_order % (3 * delay2pass)] = pic->pts;
-+                else
-+                    ctx->ts_ring[ctx->input_order % (3 * MAX_ADAPTIVE_GOP_SIZE)] = pic->pts;
-+            }
-+        }
++        
++        func->vastapiEncCalTimeStampPar(ctx, pic, pkt_duration);
 +
 +        pic->display_order = ctx->input_order;
 +        ++ctx->input_order;
@@ -8598,7 +8533,8 @@ index 0000000..58c5d8a
 +    ctx->av_packet_unref                      = vaenc_av_packet_unref;
 +    ctx->update_av1_pkt                       = vaenc_update_av1_pkt;
 +    ctx->ffmpeg_av_freep                      = vaenc_ffmpeg_av_freep;
-+    ctx->pframe_number                        = avctx->frame_number;
++    ctx->ff_av_log                            = av_log;
++    ctx->pframe_number                        = &avctx->frame_number;
 +    ctx->avctx                                = avctx;
 +#if FF_GE(N441)
 +    ctx->ff_version = 2;
@@ -8773,6 +8709,8 @@ index 0000000..58c5d8a
 +    if (err < 0)
 +        goto fail;
 +
++    ctx->rate_emu = ctx->vast_param->lkLatency;
++
 +#if FF_LT(N441)
 +    ctx->rate_emu = 0;
 +#else
@@ -8780,8 +8718,6 @@ index 0000000..58c5d8a
 +        ctx->vast_param->multimode != VA_SINGLE_CORE_MODE || ctx->vast_param->lookaheadDepth == 0 ||
 +        ctx->vast_param->openGop)
 +        ctx->rate_emu = 0;
-+    else
-+        ctx->rate_emu = 1;
 +#endif
 +
 +    err = vastapi_encode_create_recon_frames(avctx);
@@ -8871,7 +8807,7 @@ index 0000000..58c5d8a
 +    }
 +
 +    if (/*ctx->va_packed_headers & VAST_ENC_PACKED_HEADER_SEQUENCE &&*/
-+        ctx->codec->write_sequence_header && avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
++        ctx->codec->write_sequence_header && (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)) {
 +        char   data[MAX_PARAM_BUFFER_SIZE];
 +        size_t bit_len = 8 * sizeof(data);
 +
@@ -10384,7 +10320,9 @@ index 0000000..58c5d8a
 +        ptl->general_profile_compatibility_flag[1] = bit_depth == 8;
 +        ptl->general_profile_compatibility_flag[2] = bit_depth <= 10;
 +    }
-+    ptl->general_profile_compatibility_flag[4] = 1;
++    
++    if(ptl->general_profile_idc == 4) 
++        ptl->general_profile_compatibility_flag[4] = 1;
 +
 +    ptl->general_progressive_source_flag    = 1;
 +    ptl->general_interlaced_source_flag     = 0;
@@ -10451,8 +10389,9 @@ index 0000000..58c5d8a
 +    sps->chroma_format_idc          = chroma_format;
 +    sps->separate_colour_plane_flag = 0;
 +
-+    sps->pic_width_in_luma_samples  = ctx->surface_width;
-+    sps->pic_height_in_luma_samples = ctx->surface_height;
++    int min_cu_size = 8;
++    sps->pic_width_in_luma_samples = FFALIGN(avctx->width, min_cu_size);
++    sps->pic_height_in_luma_samples = FFALIGN(avctx->height, min_cu_size);
 +
 +    if (avctx->width != ctx->surface_width || avctx->height != ctx->surface_height) {
 +        sps->conformance_window_flag = 1;
@@ -10482,13 +10421,13 @@ index 0000000..58c5d8a
 +    // driver.
 +    // CTB size from 8x8 to 32x32.
 +    sps->log2_min_luma_coding_block_size_minus3   = 0;
-+    sps->log2_diff_max_min_luma_coding_block_size = 2;
++    sps->log2_diff_max_min_luma_coding_block_size = 3;
 +    // Transform size from 4x4 to 32x32.
 +    sps->log2_min_luma_transform_block_size_minus2   = 0;
 +    sps->log2_diff_max_min_luma_transform_block_size = 3;
 +    // Full transform hierarchy allowed (2-5).
 +    sps->max_transform_hierarchy_depth_inter = 3;
-+    sps->max_transform_hierarchy_depth_intra = 3;
++    sps->max_transform_hierarchy_depth_intra = 2;
 +    // AMP works.
 +    sps->amp_enabled_flag = 1;
 +    // SAO and temporal MVP do not work.
@@ -11347,7 +11286,11 @@ index 0000000..58c5d8a
 +    if (seq->seq_force_screen_content_tools == 0)
 +        seq->seq_force_integer_mv = AV1_SELECT_INTEGER_MV;
 +
-+    if (((ctx->vast_param->bitDepthLuma - 8) > 0) && (seq->seq_profile == 2)) // SW_PROFILE_2
++    if (ctx->vast_param->bitDepthLuma == DEFAULT_VAST)
++    {
++        seq->color_config.high_bitdepth = 0;
++    }
++    else if (((ctx->vast_param->bitDepthLuma - 8) > 0) && (seq->seq_profile == 2)) // SW_PROFILE_2
 +    {
 +        seq->color_config.high_bitdepth = 1;
 +        if ((ctx->vast_param->bitDepthLuma - 8) == 12)
@@ -11485,6 +11428,9 @@ index 0000000..58c5d8a
 +    // but there isn't any reason to do so - the one usable driver (i965)
 +    // can write its own headers and there is no metadata to include.
 +    ctx->desired_packed_headers = 0;
++
++    priv->profile = 0; // vast default FF_PROFILE_AV1_MAIN
++    priv->level = 13;  // vast default 5.1
 +
 +    if (avctx->profile == FF_PROFILE_UNKNOWN)
 +        avctx->profile = priv->profile;
@@ -14401,10 +14347,10 @@ index 0000000..b5b6cb3
 +#endif /* AVFILTER_VASTAPI_VPP_H */
 diff --git a/libavfilter/vf_misc_vastapi.c b/libavfilter/vf_misc_vastapi.c
 new file mode 100644
-index 0000000..b41240b
+index 0000000..5f42baf
 --- /dev/null
 +++ b/libavfilter/vf_misc_vastapi.c
-@@ -0,0 +1,636 @@
+@@ -0,0 +1,791 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -14430,7 +14376,7 @@ index 0000000..b41240b
 +#include "libavutil/pixdesc.h"
 +#include "libavutil/avstring.h"
 +#include "libavfilter/filters.h"
-+
++#include "libavutil/eval.h"
 +#include "avfilter.h"
 +#include "formats.h"
 +#include "internal.h"
@@ -14460,6 +14406,63 @@ index 0000000..b41240b
 +#define MISC_PARAM_BAD_NAME (-1)
 +#define MISC_PARAM_BAD_VALUE (-2)
 +
++static const char *const var_names[] = {
++   "in_w",   "iw",
++    "in_h",   "ih",
++    "out_w",  "ow",
++    "out_h",  "oh",
++    "a",
++    "sar",
++    "dar",
++    "hsub",
++    "vsub",
++    "ohsub",
++    "ovsub",
++    "n",
++    "t",
++    "pos",
++    "main_w",
++    "main_h",
++    "main_a",
++    "main_sar",
++    "main_dar", "mdar",
++    "main_hsub",
++    "main_vsub",
++    "main_n",
++    "main_t",
++    "main_pos",
++    NULL
++};
++
++enum var_name {
++    VAR_IN_W,   VAR_IW,
++    VAR_IN_H,   VAR_IH,
++    VAR_OUT_W,  VAR_OW,
++    VAR_OUT_H,  VAR_OH,
++    VAR_A,
++    VAR_SAR,
++    VAR_DAR,
++    VAR_HSUB,
++    VAR_VSUB,
++    VAR_OHSUB,
++    VAR_OVSUB,
++    VAR_N,
++    VAR_T,
++    VAR_POS,
++    VAR_S2R_MAIN_W,
++    VAR_S2R_MAIN_H,
++    VAR_S2R_MAIN_A,
++    VAR_S2R_MAIN_SAR,
++    VAR_S2R_MAIN_DAR, VAR_S2R_MDAR,
++    VAR_S2R_MAIN_HSUB,
++    VAR_S2R_MAIN_VSUB,
++    VAR_S2R_MAIN_N,
++    VAR_S2R_MAIN_T,
++    VAR_S2R_MAIN_POS,
++    VARS_NB
++};
++
++
 +typedef struct MiscVASTAPIContext {
 +    VASTAPIVPPContext vpp_ctx; // must be the first field
 +    int               nb_inputs;
@@ -14474,7 +14477,7 @@ index 0000000..b41240b
 +    unsigned int is_enable;
 +    int          overlay_size;
 +    char        *overlay_data;
-+
++    double var_values[VARS_NB];
 +    // colorspac
 +} MiscVASTAPIContext;
 +
@@ -14520,6 +14523,88 @@ index 0000000..b41240b
 +    vastapi_nodev_free_functions(&func);
 +    return -1;
 +}
++
++static unsigned int eval_cmd_strings_prase(AVFilterLink *inlink,MiscVASTAPIContext *ctx, char *split)
++{
++    char *sub_string,*saveptr;
++    sub_string = av_strtok(ctx->vpp_ctx.vastfilter_params.filt_params->output_size, split,&saveptr);
++    const char *expr;
++    double res;
++    
++    int ret, w = 0, h = 0,factor_w = 1,factor_h = 1,scale_w,scale_h;
++    ctx->var_values[VAR_IN_W]  = ctx->var_values[VAR_IW] = inlink->w;
++    ctx->var_values[VAR_IN_H]  = ctx->var_values[VAR_IH] = inlink->h;
++    int index = 0, i = -1;
++
++    while (sub_string) {
++        if (index % 2 == 0) {
++            i++;
++            if ((ret = av_expr_parse_and_eval(&res, (expr = sub_string),
++                                var_names, ctx->var_values,
++                                NULL, NULL, NULL, NULL, NULL, 0, ctx)) < 0)
++            return AVERROR(EINVAL);
++            scale_w = res;
++            w = scale_w;
++            if (w < -1) {
++                factor_w = -w;
++            }
++            if (!(w = scale_w))
++                w = inlink->w;
++        } else {
++            if ((ret = av_expr_parse_and_eval(&res, (expr = sub_string),
++                                var_names, ctx->var_values,
++                                NULL, NULL, NULL, NULL, NULL, 0, ctx)) < 0)
++            return AVERROR(EINVAL);
++            scale_h = res;
++            h = scale_h;
++            if (h < -1) {
++                factor_h = -h;
++            }
++            if (!(h = scale_h))
++                h = inlink->h;
++        }
++        if(w != 0 && h != 0 ){
++            if (w < 0)
++                w = av_rescale(h, inlink->w, inlink->h * factor_w) * factor_w;
++
++            if (h < 0)
++                h = av_rescale(w, inlink->h, inlink->w * factor_h) * factor_h;
++
++            if (ctx->vpp_ctx.vastfilter_params.filt_params->force_original_aspect_ratio) {
++                int tmp_w = av_rescale(h, inlink->w, inlink->h);
++                int tmp_h = av_rescale(w, inlink->h, inlink->w);
++
++                if (ctx->vpp_ctx.vastfilter_params.filt_params->force_original_aspect_ratio == 1) {
++                    w = FFMIN(tmp_w, w);
++                    h = FFMIN(tmp_h, h);
++                } else {
++                    w = FFMAX(tmp_w, w);
++                    h = FFMAX(tmp_h, h);
++                }
++            }
++
++            if(h < 0 && w < 0){
++                w = inlink->w;
++                h = inlink->h;
++            }
++
++            ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height = h;
++            if (ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height % 2 != 0) {
++                ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height = ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height & ~0x1;
++            }
++
++            ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width = w;
++            if (ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width % 2 != 0) {
++                ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width = ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width & ~0x1;
++            }
++            w = 0, h = 0;
++        }
++        sub_string = av_strtok(NULL, split,&saveptr);
++        index++;
++    }
++    return i + 1;
++}
++
 +
 +static av_cold int misc_vastapi_init(AVFilterContext *avctx)
 +{
@@ -14671,6 +14756,16 @@ index 0000000..b41240b
 +        vctx->vastfilter_params.filt_params->width_height_array[0].width  = vctx->vastfilter_params.filt_params->height;
 +        vctx->vastfilter_params.filt_params->width_height_array[0].height = vctx->vastfilter_params.filt_params->width;
 +    }
++
++    if(strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"if(")
++     || strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"(") 
++     || strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"-1")){
++        if (eval_cmd_strings_prase(inlink,ctx,"x+") != ctx->vpp_ctx.vastfilter_params.filt_params->nb_outputs) {
++            av_log(ctx, AV_LOG_ERROR, "The input parameters outputs and output_size do not match .\n");
++            return -1;
++        }   
++    }
++
 +    for (i = 0; i < vctx->vastfilter_params.filt_params->nb_outputs; i++) {
 +        if (!vctx->vastfilter_params.filt_params->width_height_array[i].width) {
 +            vctx->vastfilter_params.filt_params->width_height_array[i].width = inlink->w;
@@ -14894,6 +14989,12 @@ index 0000000..b41240b
 +        ret = AVERROR(EINVAL);
 +        return ret;
 +    }
++
++    if(!overlay_frame){
++        ret = AVERROR(EINVAL);
++        return ret;
++    }
++
 +    if (overlay_frame->width % 2 == 1) {
 +        overlay_frame->width--;
 +    }
@@ -15357,10 +15458,10 @@ index e626649..23d2cfc 100644
  extern const HWContextType ff_hwcontext_type_mediacodec;
 diff --git a/libavutil/hwcontext_vastapi.c b/libavutil/hwcontext_vastapi.c
 new file mode 100644
-index 0000000..b1af4a0
+index 0000000..9e73762
 --- /dev/null
 +++ b/libavutil/hwcontext_vastapi.c
-@@ -0,0 +1,1161 @@
+@@ -0,0 +1,1189 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -15765,14 +15866,25 @@ index 0000000..b1af4a0
 +    AVVASTAPIDeviceContext *hwctx = hwfc->device_ctx->hwctx;
 +    VastapiFunctions       *func  = (VastapiFunctions *)hwctx->vst_func;
 +
-+    if (ctx->dma_transfer.inited)
-+        func->vastapiDestroyDmaHandle(hwctx->display, &ctx->dma_transfer);
++#ifdef VENC_INPUT_DMA
++    if (ctx->dma_transfer.inited){
++        if (ctx->dma_hack_enable) {
++            if(ctx->dma_transfer.dmabuff_viraddr){
++                free(ctx->dma_transfer.dmabuff_viraddr);
++                ctx->dma_transfer.dmabuff_viraddr = NULL;
++            }
++        } else {
++            func->vastapiDestroyDmaHandle(hwctx->display, &ctx->dma_transfer);
++        }
++    }
++
 +    if (ctx->pool_dmabuffer) {
 +        av_buffer_pool_uninit(&ctx->pool_dmabuffer);
 +        ctx->init_dmabuffer_pool_size = 0;
-+        ctx->number_dmabuffer         = 0;
-+        ctx->buffer_elem_size         = 0;
++        ctx->number_dmabuffer = 0;
++        ctx->buffer_elem_size = 0;
 +    }
++#endif
 +
 +    if (avfc->surface_ids)
 +        func->vastapiFreeMemory(avfc->surface_ids);
@@ -16062,12 +16174,19 @@ index 0000000..b1af4a0
 +
 +    map->width  = src->width;
 +    map->height = src->height;
-+
-+    err = func->vastapiDmaReadBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
-+                                  &ctx->dma_transfer);
-+    if (err) {
-+        av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
-+               ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++    if (ctx->dma_hack_enable) {
++        err = func->vastapiDeviceMemcpy(hwctx->display, (ctx->dma_transfer.device_id)>>24, ctx->dma_transfer.dmabuff_viraddr, ctx->dma_transfer.data_size, ctx->dma_transfer.bus_addr, 1, &ctx->dma_transfer);
++        if (err) {
++            av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by hack dma, err = %d, busaddr=0x%x, size=%d\n",
++                    err, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++        }
++    } else {
++        err = func->vastapiDmaReadBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
++                                    &ctx->dma_transfer);
++        if (err) {
++            av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
++                ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++        }
 +    }
 +
 +    err = av_frame_copy(dst, map);
@@ -16183,12 +16302,22 @@ index 0000000..b1af4a0
 +        }
 +        QueWriteDmaBufSg(channel, planes, dma_meta.bus_addr, dma_meta.die_id);
 +#else
-+        err = func->vastapiDmaWriteBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
-+                                       &ctx->dma_transfer);
-+        if (err) {
-+            av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
-+                   ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++        if (ctx->dma_hack_enable) {
++            err = func->vastapiDeviceMemcpy(hwctx->display, (ctx->dma_transfer.device_id)>>24, ctx->dma_transfer.dmabuff_viraddr, ctx->dma_transfer.data_size, ctx->dma_transfer.bus_addr, 0, &ctx->dma_transfer);
++            if (err) {
++                av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by hack dma, err = %d, busaddr=0x%x, size=%d\n",
++                     err, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++            }
++        } else {
++            err = func->vastapiDmaWriteBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
++                                        &ctx->dma_transfer);
++            if (err) {
++                av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
++                    ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++            }
 +        }
++
++
 +#endif
 +
 +    fail:

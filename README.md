@@ -31,7 +31,7 @@ git clone https://github.com/vastai-video/VACodecHeaders.git
 mkdir -p ${VASTAI_STREAM_INSTALL}/include
 
 cd VACodecHeaders
-cp -r include/vastva ${VASTAI_STREAM_INSTALL}/include
+cp -r include/vastva ${VASTAI_STREAM_INSTALL}/include/
 cd -
 ```
 
@@ -51,8 +51,8 @@ cd -
 # build for x86_64
 cd ffmpeg
 ./configure --enable-shared --disable-static --enable-gpl --enable-nonfree \
-			--enable-vastapi --extra-cflags=-I${VASTAI_STREAM_INSTALL}/include \
-			--prefix=${VASTAI_STREAM_INSTALL}/ffmpeg
+	--enable-vastapi --extra-cflags=-I${VASTAI_STREAM_INSTALL}/include \
+	--prefix=${VASTAI_STREAM_INSTALL}/ffmpeg
 make -j $(nproc)
 make install
 cd -
@@ -62,8 +62,8 @@ cd -
 # build for arm64
 cd ffmpeg
 ./configure --arch=arm64 --enable-shared --disable-static --enable-gpl --enable-nonfree \
-			--enable-vastapi --extra-cflags=-I${VASTAI_STREAM_INSTALL}/include \
-			--prefix=${VASTAI_STREAM_INSTALL}/ffmpeg
+	--enable-vastapi --extra-cflags=-I${VASTAI_STREAM_INSTALL}/include \
+	--prefix=${VASTAI_STREAM_INSTALL}/ffmpeg
 make -j $(nproc)
 make install
 cd -
@@ -82,7 +82,7 @@ mkdir -p ${VASTAI_STREAM_INSTALL}/lib
 
 # eg: vmpp_2.8.1_x86_64_rel.tar.gz
 tar -zxvf vmpp_2.8.1_x86_64_rel.tar.gz
-cp -r lib/ ${VASTAI_STREAM_INSTALL}
+cp -r vmpp_2.8.1_x86_64_rel/lib/ ${VASTAI_STREAM_INSTALL}
 ```
 
 2. Install driver package and set env. See the official release version.

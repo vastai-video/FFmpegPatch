@@ -1,5 +1,5 @@
 diff --git a/configure b/configure
-index 6a7a85c..7be1fe6 100755
+index 6a7a85c..8f589b5 100755
 --- a/configure
 +++ b/configure
 @@ -338,6 +338,7 @@ External library support:
@@ -10,17 +10,18 @@ index 6a7a85c..7be1fe6 100755
    --disable-vdpau          disable Nvidia Video Decode and Presentation API for Unix code [autodetect]
    --disable-videotoolbox   disable VideoToolbox code [autodetect]
  
-@@ -1685,6 +1686,9 @@ EXAMPLE_LIST="
+@@ -1685,6 +1686,10 @@ EXAMPLE_LIST="
      transcoding_example
      vaapi_encode_example
      vaapi_transcode_example
 +    vastapi_downscale_example
 +    vastapi_transcode_example
++    vastapi_varres_transcode_example
 +    vastapi_decode_example
  "
  
  EXTERNAL_AUTODETECT_LIBRARY_LIST="
-@@ -1827,6 +1831,7 @@ HWACCEL_AUTODETECT_LIBRARY_LIST="
+@@ -1827,6 +1832,7 @@ HWACCEL_AUTODETECT_LIBRARY_LIST="
      nvdec
      nvenc
      vaapi
@@ -28,7 +29,7 @@ index 6a7a85c..7be1fe6 100755
      vdpau
      videotoolbox
      v4l2_m2m
-@@ -2400,6 +2405,7 @@ CONFIG_EXTRA="
+@@ -2400,6 +2406,7 @@ CONFIG_EXTRA="
      tpeldsp
      vaapi_1
      vaapi_encode
@@ -36,7 +37,7 @@ index 6a7a85c..7be1fe6 100755
      vc1dsp
      videodsp
      vp3dsp
-@@ -2892,6 +2898,9 @@ h264_nvdec_hwaccel_deps="nvdec"
+@@ -2892,6 +2899,9 @@ h264_nvdec_hwaccel_deps="nvdec"
  h264_nvdec_hwaccel_select="h264_decoder"
  h264_vaapi_hwaccel_deps="vaapi"
  h264_vaapi_hwaccel_select="h264_decoder"
@@ -46,7 +47,7 @@ index 6a7a85c..7be1fe6 100755
  h264_vdpau_hwaccel_deps="vdpau"
  h264_vdpau_hwaccel_select="h264_decoder"
  h264_videotoolbox_hwaccel_deps="videotoolbox"
-@@ -2989,6 +2998,7 @@ qsvdec_select="qsv"
+@@ -2989,6 +2999,7 @@ qsvdec_select="qsv"
  qsvenc_select="qsv"
  qsvvpp_select="qsv"
  vaapi_encode_deps="vaapi"
@@ -54,7 +55,7 @@ index 6a7a85c..7be1fe6 100755
  v4l2_m2m_deps="linux_videodev2_h sem_timedwait"
  
  hwupload_cuda_filter_deps="ffnvcodec"
-@@ -3020,6 +3030,10 @@ h264_qsv_encoder_select="qsvenc"
+@@ -3020,6 +3031,10 @@ h264_qsv_encoder_select="qsvenc"
  h264_rkmpp_decoder_deps="rkmpp"
  h264_rkmpp_decoder_select="h264_mp4toannexb_bsf"
  h264_vaapi_encoder_select="cbs_h264 vaapi_encode"
@@ -65,7 +66,7 @@ index 6a7a85c..7be1fe6 100755
  h264_v4l2m2m_decoder_deps="v4l2_m2m h264_v4l2_m2m"
  h264_v4l2m2m_decoder_select="h264_mp4toannexb_bsf"
  h264_v4l2m2m_encoder_deps="v4l2_m2m h264_v4l2_m2m"
-@@ -3410,6 +3424,7 @@ libssh_protocol_deps="libssh"
+@@ -3410,6 +3425,7 @@ libssh_protocol_deps="libssh"
  libtls_conflict="openssl gnutls mbedtls"
  
  # filters
@@ -73,17 +74,18 @@ index 6a7a85c..7be1fe6 100755
  afftdn_filter_deps="avcodec"
  afftdn_filter_select="fft"
  afftfilt_filter_deps="avcodec"
-@@ -3559,6 +3574,9 @@ yadif_cuda_filter_deps="ffnvcodec"
+@@ -3559,6 +3575,10 @@ yadif_cuda_filter_deps="ffnvcodec"
  yadif_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
  
  # examples
 +vastapi_downscale_example_deps="vastapi"
 +vastapi_transcode_example_deps="avcodec avformat avutil h264_vastapi_encoder"
++vastapi_varres_transcode_example_deps="avcodec avformat avutil h264_vastapi_encoder"
 +vastapi_decode_example_deps="vastapi"
  avio_dir_cmd_deps="avformat avutil"
  avio_reading_deps="avformat avcodec avutil"
  decode_audio_example_deps="avcodec avutil"
-@@ -6533,6 +6551,10 @@ if enabled vaapi; then
+@@ -6533,6 +6553,10 @@ if enabled vaapi; then
      check_type "va/va.h va/va_enc_vp9.h"  "VAEncPictureParameterBufferVP9"
  fi
  
@@ -95,15 +97,16 @@ index 6a7a85c..7be1fe6 100755
      check_type "CL/cl_intel.h" "clCreateImageFromFdINTEL_fn" &&
          enable opencl_drm_beignet
 diff --git a/doc/examples/Makefile b/doc/examples/Makefile
-index 2935424..d751b4a 100644
+index 2935424..c5c4572 100644
 --- a/doc/examples/Makefile
 +++ b/doc/examples/Makefile
-@@ -21,6 +21,9 @@ EXAMPLES-$(CONFIG_TRANSCODE_AAC_EXAMPLE)     += transcode_aac
+@@ -21,6 +21,10 @@ EXAMPLES-$(CONFIG_TRANSCODE_AAC_EXAMPLE)     += transcode_aac
  EXAMPLES-$(CONFIG_TRANSCODING_EXAMPLE)       += transcoding
  EXAMPLES-$(CONFIG_VAAPI_ENCODE_EXAMPLE)      += vaapi_encode
  EXAMPLES-$(CONFIG_VAAPI_TRANSCODE_EXAMPLE)   += vaapi_transcode
 +EXAMPLES-$(CONFIG_VASTAPI_DOWNSCALE_EXAMPLE) += vastapi_downscale
 +EXAMPLES-$(CONFIG_VASTAPI_TRANSCODE_EXAMPLE) += vastapi_transcode
++EXAMPLES-$(CONFIG_VASTAPI_VARRES_TRANSCODE_EXAMPLE) += vastapi_varres_transcode
 +EXAMPLES-$(CONFIG_VASTAPI_DECODE_EXAMPLE)    += vastapi_decode
  
  EXAMPLES       := $(EXAMPLES-yes:%=doc/examples/%$(PROGSSUF)$(EXESUF))
@@ -2439,7 +2442,7 @@ index 0000000..7952454
 +}
 diff --git a/doc/examples/vastapi_transcode.c b/doc/examples/vastapi_transcode.c
 new file mode 100644
-index 0000000..6455982
+index 0000000..93ddcb7
 --- /dev/null
 +++ b/doc/examples/vastapi_transcode.c
 @@ -0,0 +1,1719 @@
@@ -3175,7 +3178,7 @@ index 0000000..6455982
 +                                            (encoder_ctx[chan]->framerate.num / encoder_ctx[chan]->framerate.den);
 +            }
 +        } else {
-+            if (!input_params->vfr_fps)
++            if ((!input_params->vfr_fps) && (strcmp(input_params->encoder, "av1_vastapi") != 0))
 +                av_packet_rescale_ts(&enc_pkt, ifmt_ctx[chan]->streams[video_stream[chan]]->time_base,
 +                                     ofmt_ctx[chan]->streams[0]->time_base);
 +        }
@@ -4162,6 +4165,1893 @@ index 0000000..6455982
 +
 +    return ret;
 +}
+diff --git a/doc/examples/vastapi_varres_transcode.c b/doc/examples/vastapi_varres_transcode.c
+new file mode 100644
+index 0000000..b9b8707
+--- /dev/null
++++ b/doc/examples/vastapi_varres_transcode.c
+@@ -0,0 +1,1868 @@
++#define CONFIG_VASTAPI 1
++#include <stdio.h>
++#include <errno.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <pthread.h>
++#include <unistd.h>
++#include <string.h>
++#include <semaphore.h>
++#include <getopt.h>
++#include <sys/time.h>
++#include "libavutil/hwcontext.h"
++#include "libavcodec/avcodec.h"
++#include "libavformat/avformat.h"
++#include "libavutil/opt.h"
++
++#define RESET_TEST
++// #define VASTAI_AVFRAME_TEST
++// #define EXTERNA_BUFFER_ENCODE_TEST
++// #define DMABUFFER_FD_ENCODE_TEST
++
++/*系统声明的全局变量 */
++extern char *optarg;
++extern int   optind, opterr, optopt;
++
++#define MAX_STR_LEN 1024  // string len
++#define MAX_QUEUE_LEN 20  // queue len
++#define MAX_THREAD_NUM 32 // thread num
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++#define EXTERNAL_BUFFER_START_ADDR 0x900000000 /*Reserved for sv 100 GPU ddr addr*/
++#endif
++
++#ifdef VASTAI_AVFRAME_TEST
++#define DMA_BUFFER_NUM_MAX 4
++#endif
++
++#ifdef DMABUFFER_FD_ENCODE_TEST
++#define INPUT_TYPE_FD 0
++#define INPUT_TYPE_ADDR 1
++#endif
++
++static AVFormatContext *ifmt_ctx[MAX_THREAD_NUM] = { NULL }, *ofmt_ctx[MAX_THREAD_NUM] = { NULL };
++#ifdef RESET_TEST
++static AVFormatContext *ifmt_ctx2[MAX_THREAD_NUM] = { NULL };
++#endif
++static AVBufferRef    *hw_device_ctx[MAX_THREAD_NUM] = { NULL };
++static AVCodecContext *decoder_ctx[MAX_THREAD_NUM] = { NULL }, *encoder_ctx[MAX_THREAD_NUM] = { NULL };
++static int             video_stream[MAX_THREAD_NUM] = { 0 };
++static AVStream       *ist[MAX_THREAD_NUM]          = { NULL };
++static AVStream       *ost[MAX_THREAD_NUM]          = { NULL };
++static int             cnt[MAX_THREAD_NUM]          = { 0 };
++struct Queue          *queue_g[MAX_THREAD_NUM]      = { NULL };
++static int             frame_cnt[MAX_THREAD_NUM] = { 0 }, enc_frame_cnt[MAX_THREAD_NUM] = { 0 };
++static long            frame_pts[MAX_THREAD_NUM]      = { 0 };
++static int             thread_end[MAX_THREAD_NUM]     = { 0 };
++static int             decode_end[MAX_THREAD_NUM]     = { 0 };
++static int             decode_num[MAX_THREAD_NUM]     = { 0 };
++static int             loop[MAX_THREAD_NUM]           = { 0 };
++static int             input_cnt[MAX_THREAD_NUM]      = { 0 };
++static int64_t         start_duration[MAX_THREAD_NUM] = { 0 };
++
++#define SEI_COUNT 2
++#define SEI_BUFFER_SIZE 28
++static const uint8_t encode_h264_sei_appdata_uuid[2][16] = {
++    { 0x9e, 0x03, 0xef, 0xfd, 0x23, 0x95, 0x41, 0x01, 0xb6, 0xc2, 0x0c, 0x02, 0xbb, 0x0d, 0xa8, 0xae },
++    { 0x9f, 0x03, 0xef, 0xfd, 0x23, 0x95, 0x41, 0x01, 0xb6, 0xc2, 0x0c, 0x02, 0xbb, 0x0d, 0xa8, 0xae }
++};
++
++typedef struct option_t {
++    char      *input;
++    char      *output;
++    char      *output_file;
++    char      *render;
++    double     fps;
++    AVRational frame_rate;
++    int        bitrate;
++    char      *vast_params;
++    char      *video_size;
++    char      *pixel_format;
++    char      *encoder;
++    char      *profile;
++    double     level;
++    int        thread_num;
++    int        frame_cnt;
++    int        loop;
++    int        count;
++    int        save;
++    double     vfr_fps;
++
++    char *reset_input;
++    char *reset_video_size;
++    int   reset_frame_num;
++
++    int enable_roi;
++    int enable_sei;
++    int enable_idr;
++    int enable_dynamic_bitrate;
++    int enable_dynamic_fps;
++    int crf;
++    int enable_reset_resolution;
++    int enable_dynamic_keyint;
++} option_t;
++
++struct thread_info {
++    pthread_t thread_id;  /* ID returned by pthread_create() */
++    int       thread_chn; /* Application-defined thread id # */
++    void     *handle;
++};
++
++typedef struct {
++    void        *data;
++    struct Node *next;
++} Node;
++
++typedef struct {
++    Node           *front; // head
++    Node           *rear;  // tail
++    int             len;
++    int             max_len;
++    pthread_mutex_t q_lock;
++    pthread_cond_t  not_empty;
++    pthread_cond_t  not_full;
++} Queue;
++
++typedef struct Usrdata {
++    int      chn;
++    int      cnt;
++    char     endflg;
++    AVFrame *frame;
++    AVFrame *hw_frame_dec;
++} Usrdata;
++
++static void *init_queue(void)
++{
++    Queue *queue = (Queue *)malloc(sizeof(Queue));
++    if (!queue) {
++        printf("not enough mem\n");
++        exit(1);
++    }
++
++    queue->rear = queue->front = (Node *)malloc(sizeof(Node));
++    queue->front->next         = NULL;
++    queue->len                 = 0;
++    queue->max_len             = MAX_QUEUE_LEN;
++
++    pthread_mutex_init(&queue->q_lock, NULL);
++    pthread_cond_init(&queue->not_empty, NULL);
++    pthread_cond_init(&queue->not_full, NULL);
++
++    return queue;
++}
++
++static void en_queue(Queue *q, void *data, size_t len)
++{
++    pthread_mutex_lock(&q->q_lock);
++    while (q->len == MAX_QUEUE_LEN) {
++        // printf("en queue is full\n");
++        pthread_cond_wait(&q->not_full, &q->q_lock);
++    }
++
++    Node *newnode = (Node *)malloc(sizeof(Node));
++    newnode->data = malloc(len);
++    memcpy(newnode->data, data, len);
++    newnode->next = NULL;
++
++    q->rear->next = (void *)newnode;
++    q->rear       = newnode;
++    q->len        = q->len + 1;
++
++    pthread_cond_signal(&q->not_empty);
++    pthread_mutex_unlock(&q->q_lock);
++}
++
++static void de_queue(Queue *q)
++{
++    Node *newnode;
++
++    pthread_mutex_lock(&q->q_lock);
++    while (q->len == 0) {
++        // printf("de queue is empty\n");
++        pthread_cond_wait(&q->not_empty, &q->q_lock);
++    }
++
++    newnode        = (void *)q->front->next;
++    q->front->next = newnode->next;
++
++    if (q->rear == newnode)
++        q->rear = q->front;
++
++    free(newnode->data);
++    free(newnode);
++
++    q->len = q->len - 1;
++
++    pthread_cond_signal(&q->not_full);
++    pthread_mutex_unlock(&q->q_lock);
++    return;
++}
++
++static void *read_queue(Queue *q)
++{
++    Node *read_node;
++
++    pthread_mutex_lock(&q->q_lock);
++    while (q->len == 0) {
++        // printf("read queue is empty\n");
++        pthread_cond_wait(&q->not_empty, &q->q_lock);
++    }
++
++    read_node = (void *)q->front->next;
++    if (read_node == NULL) {
++        printf("q->front->next is empty\n");
++        return NULL;
++    }
++
++    pthread_cond_signal(&q->not_empty);
++    pthread_mutex_unlock(&q->q_lock);
++    return read_node->data;
++}
++
++static int is_empty(Queue *q)
++{
++    return (q->len == 0);
++}
++
++static int destroy_queue(Queue *q)
++{
++    while (q->front) {
++        q->rear = (void *)q->front->next;
++        free(q->front);
++        q->front = q->rear;
++    }
++
++    return 0;
++}
++
++#ifdef FFMPEG_N311
++static int get_vast_buffer(AVCodecContext *avctx, AVFrame *frame, int flags)
++{
++    int ret = 0;
++
++    if ((ret = av_hwframe_get_buffer(avctx->hw_frames_ctx, frame, 0)) < 0) {
++        printf("Failed to allocate decoder surface.\n");
++    }
++
++    return ret;
++}
++#endif
++
++// 获取formart
++static enum AVPixelFormat get_vastapi_format(AVCodecContext *ctx, const enum AVPixelFormat *pix_fmts)
++{
++    const enum AVPixelFormat *p;
++    for (p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
++        if (*p == AV_PIX_FMT_VASTAPI)
++            return *p;
++    }
++
++    fprintf(stderr, "Unable to decode this file using VASTAPI.\n");
++    return AV_PIX_FMT_NONE;
++}
++
++static int set_hwframe_ctx(AVCodecContext *ctx, AVBufferRef *hw_device_ctx, struct option_t *input_params, int flag)
++{
++    AVBufferRef       *hw_frames_ref = NULL;
++    AVHWFramesContext *frames_ctx    = NULL;
++    int                ret           = 0;
++
++    if (!(hw_frames_ref = av_hwframe_ctx_alloc(hw_device_ctx))) {
++        fprintf(stderr, "Failed to create VASTAPI frame context.\n");
++        return -1;
++    }
++
++    frames_ctx = (AVHWFramesContext *)(hw_frames_ref->data);
++
++    if (strcmp(input_params->pixel_format, "yuv420p") == 0)
++        frames_ctx->sw_format = AV_PIX_FMT_YUV420P;
++    else if (strcmp(input_params->pixel_format, "nv12") == 0)
++        frames_ctx->sw_format = AV_PIX_FMT_NV12;
++    else if (strcmp(input_params->pixel_format, "nv21") == 0)
++        frames_ctx->sw_format = AV_PIX_FMT_NV21;
++    else if (strcmp(input_params->pixel_format, "rgb") == 0)
++        frames_ctx->sw_format = AV_PIX_FMT_RGB0;
++    else if (strcmp(input_params->pixel_format, "yuv420p10le") == 0)
++        frames_ctx->sw_format = AV_PIX_FMT_YUV420P10LE;
++    else
++        frames_ctx->sw_format = AV_PIX_FMT_NONE;
++
++    frames_ctx->format            = AV_PIX_FMT_VASTAPI;
++    frames_ctx->width             = ctx->width;
++    frames_ctx->height            = ctx->height;
++    frames_ctx->initial_pool_size = 32;
++    frames_ctx->frame_buffer_flag = flag;
++
++    if ((ret = av_hwframe_ctx_init(hw_frames_ref)) < 0) {
++        fprintf(stderr, "Failed to initialize VASTAPI frame context. Error code: %s\n", av_err2str(ret));
++        av_buffer_unref(&hw_frames_ref);
++        return ret;
++    }
++
++    ctx->hw_frames_ctx = av_buffer_ref(hw_frames_ref);
++    if (!ctx->hw_frames_ctx)
++        ret = AVERROR(ENOMEM);
++
++    av_buffer_unref(&hw_frames_ref);
++    return ret;
++}
++
++static int decode_init(int chan, struct option_t *input_params)
++{
++    int           ret = 0, rawyuv = 0;
++    AVCodec      *decoder     = NULL;
++    AVStream     *video       = NULL;
++    AVDictionary *format_opts = NULL;
++    char         *fiename_in  = input_params->input;
++
++    rawyuv = strstr(fiename_in, ".yuv") || strstr(fiename_in, ".rgb");
++    if (rawyuv) {
++        av_dict_set(&format_opts, "video_size", input_params->video_size, 0);
++        av_dict_set(&format_opts, "pixel_format", input_params->pixel_format, 0);
++
++        if ((ret = avformat_open_input(&ifmt_ctx[chan], fiename_in, NULL, &format_opts)) < 0) {
++            fprintf(stderr, "Cannot open input file '%s', Error code: %s\n", fiename_in, av_err2str(ret));
++            goto fail;
++        }
++    } else {
++        if ((ret = avformat_open_input(&ifmt_ctx[chan], fiename_in, NULL, NULL)) < 0) {
++            fprintf(stderr, "Cannot open input file %s, Error code: %s\n", fiename_in, av_err2str(ret));
++            goto fail;
++        }
++    }
++
++    if ((ret = avformat_find_stream_info(ifmt_ctx[chan], NULL)) < 0) {
++        fprintf(stderr, "Cannot find input stream information. Error code: %s\n", av_err2str(ret));
++        goto fail;
++    }
++
++    if ((ret = av_find_best_stream(ifmt_ctx[chan], AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0)) < 0) {
++        fprintf(stderr, "Cannot find a video stream in the input file. Error code: %s\n", av_err2str(ret));
++        goto fail;
++    }
++
++    video_stream[chan] = ret;
++
++#ifndef FFMPEG_N26
++    if (!(decoder_ctx[chan] = avcodec_alloc_context3(decoder))) {
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++#endif
++
++    video     = ifmt_ctx[chan]->streams[video_stream[chan]];
++    ist[chan] = video;
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    decoder_ctx[chan] = video->codec;
++    av_opt_set_int(decoder_ctx[chan], "refcounted_frames", 1, 0);
++#else
++    if ((ret = avcodec_parameters_to_context(decoder_ctx[chan], video->codecpar)) < 0) {
++        fprintf(stderr, "avcodec_parameters_to_context error. Error code: %s\n", av_err2str(ret));
++        goto fail;
++    }
++#endif
++
++    ret = av_hwdevice_ctx_create(&hw_device_ctx[chan], AV_HWDEVICE_TYPE_VASTAPI, input_params->render, NULL, 0);
++    if (ret < 0) {
++        fprintf(stderr, "Failed to create a VASTAPI device. Error code: %s\n", av_err2str(ret));
++        return -1;
++    }
++
++    if (!(decoder_ctx[chan]->hw_device_ctx = av_buffer_ref(hw_device_ctx[chan]))) {
++        fprintf(stderr, "A hardware device reference create failed.\n");
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++
++    decoder_ctx[chan]->get_format = get_vastapi_format;
++    decoder_ctx[chan]->framerate  = av_guess_frame_rate(ifmt_ctx[chan], video, NULL);
++
++    if ((ret = avcodec_open2(decoder_ctx[chan], decoder, NULL)) < 0) {
++        fprintf(stderr, "Failed to open codec for decoding. Error code: %s\n", av_err2str(ret));
++        goto fail;
++    }
++
++#ifdef FFMPEG_N311
++    decoder_ctx[chan]->get_buffer2 = get_vast_buffer;
++#endif
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++    set_hwframe_ctx(decoder_ctx[chan], hw_device_ctx[chan], input_params, 1);
++#else
++    set_hwframe_ctx(decoder_ctx[chan], hw_device_ctx[chan], input_params, 0);
++#endif
++
++    return 0;
++
++fail:
++    if (decoder_ctx[chan]) {
++#ifdef FFMPEG_N26
++        avcodec_close(decoder_ctx[chan]);
++#else
++        avcodec_free_context(&decoder_ctx[chan]);
++#endif
++        decoder_ctx[chan] = NULL;
++    }
++
++    if (ifmt_ctx[chan])
++        avformat_close_input(&ifmt_ctx[chan]);
++
++    return ret;
++}
++
++static int set_user_profile(int *profile, char **cmd_profile, char *encoder_name)
++{
++    if (*cmd_profile == NULL) {
++        return 0;
++    }
++
++    if (strcmp(encoder_name, "h264_vastapi") == 0) {
++        if (strcmp(*cmd_profile, "main") == 0) {
++            *profile = FF_PROFILE_H264_MAIN;
++        } else if (strcmp(*cmd_profile, "baseline") == 0) {
++            *profile = FF_PROFILE_H264_CONSTRAINED_BASELINE;
++        } else if (strcmp(*cmd_profile, "high") == 0) {
++            *profile = FF_PROFILE_H264_HIGH;
++        } else if (strcmp(*cmd_profile, "high10") == 0) {
++            *profile = FF_PROFILE_H264_HIGH_10;
++        }
++    } else if (strcmp(encoder_name, "hevc_vastapi") == 0) {
++        if (strcmp(*cmd_profile, "main") == 0) {
++            *profile = FF_PROFILE_HEVC_MAIN;
++        } else if (strcmp(*cmd_profile, "main10") == 0) {
++            *profile = FF_PROFILE_HEVC_MAIN_10;
++        }
++        printf("hevc_vastapi profile only can set main\n");
++    } else if (strcmp(encoder_name, "av1_vastapi") == 0) {
++        if (strcmp(*cmd_profile, "main") == 0) {
++            *profile = FF_PROFILE_AV1_MAIN;
++        }
++        printf("av1_vastapi profile only can set main\n");
++    } else {
++        printf("warnning: encoder set error!\n");
++    }
++
++    return 0;
++}
++
++static int encode_init(int chan, struct option_t *input_params)
++{
++    int      ret                             = 0;
++    AVCodec *enc_codec                       = NULL;
++    char    *cp                              = NULL;
++    char    *fiename_out                     = input_params->output;
++    char     fiename_out_prefix[MAX_STR_LEN] = { 0 };
++    char     filename_out_chn[MAX_STR_LEN]   = { 0 };
++
++    if (input_params->save) {
++        cp = strstr(fiename_out, ".");
++        if (NULL == cp)
++            cp = fiename_out;
++        strncpy(fiename_out_prefix, fiename_out, cp - fiename_out);
++
++        if (!strcmp(input_params->encoder, "mjpeg_vastapi")) {
++            sprintf(filename_out_chn, "%s_%d_%%4d%s", fiename_out_prefix, chan, cp);
++        } else {
++            sprintf(filename_out_chn, "%s_%d%s", fiename_out_prefix, chan, cp);
++        }
++
++        input_params->output_file = filename_out_chn;
++        printf("================ output file: %s %s================\n", input_params->output_file, filename_out_chn);
++
++        if ((ret = (avformat_alloc_output_context2(&ofmt_ctx[chan], NULL, NULL, input_params->output_file))) < 0) {
++            fprintf(stderr, "Failed to deduce output format from file extension. Error code: %s\n", av_err2str(ret));
++            goto fail;
++        }
++
++        if (strcmp(input_params->encoder, "mjpeg_vastapi")) {
++            if ((ret = avio_open(&ofmt_ctx[chan]->pb, input_params->output_file, AVIO_FLAG_WRITE)) < 0) {
++                fprintf(stderr, "Cannot open output file. Error code: %s\n", av_err2str(ret));
++                goto fail;
++            }
++        }
++    } else {
++        AVOutputFormat *fmt = av_guess_format("null", NULL, NULL);
++        if (!fmt) {
++            fprintf(stderr, "Could not find null muxer.\n");
++            return -1;
++        }
++
++        // 分配AVFormatContext
++        ofmt_ctx[chan] = avformat_alloc_context();
++        if (!ofmt_ctx[chan]) {
++            fprintf(stderr, "Failed to alloc output format.\n");
++            return AVERROR_UNKNOWN;
++        }
++
++        // 设置输出格式
++        ofmt_ctx[chan]->oformat = fmt;
++    }
++
++    if (!(enc_codec = avcodec_find_encoder_by_name(input_params->encoder))) {
++        fprintf(stderr, "Could not find encoder '%s'\n", input_params->encoder);
++        ret = AVERROR(ENOENT);
++        goto fail;
++    }
++
++    if (!(encoder_ctx[chan] = avcodec_alloc_context3(enc_codec))) {
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++
++    encoder_ctx[chan]->pix_fmt  = AV_PIX_FMT_VASTAPI;
++    encoder_ctx[chan]->width    = decoder_ctx[chan]->width;
++    encoder_ctx[chan]->height   = decoder_ctx[chan]->height;
++    encoder_ctx[chan]->bit_rate = input_params->bitrate;
++    encoder_ctx[chan]->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
++    encoder_ctx[chan]->get_format = get_vastapi_format;
++
++    if (input_params->vfr_fps) {
++        double     max_fps = input_params->fps > input_params->vfr_fps ? input_params->fps : input_params->vfr_fps;
++        AVRational max_framerate = av_d2q(max_fps, 4096);
++
++        encoder_ctx[chan]->time_base = av_inv_q(max_framerate);
++        encoder_ctx[chan]->framerate = max_framerate;
++        start_duration[chan]         = (double)AV_TIME_BASE / av_q2d(max_framerate);
++    } else {
++        if (input_params->fps) {
++            encoder_ctx[chan]->time_base = av_inv_q(input_params->frame_rate);
++            encoder_ctx[chan]->framerate = input_params->frame_rate;
++        } else {
++            encoder_ctx[chan]->time_base = av_inv_q(decoder_ctx[chan]->framerate);
++            encoder_ctx[chan]->framerate = decoder_ctx[chan]->framerate;
++            printf("encoder's time_base & framerate use decoder's\n");
++        }
++    }
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    av_opt_set_int(encoder_ctx[chan], "refcounted_frames", 1, 0);
++#endif
++
++    if (input_params->level)
++        encoder_ctx[chan]->level = input_params->level;
++
++    if (input_params->vast_params)
++        av_opt_set(encoder_ctx[chan]->priv_data, "vast-params", input_params->vast_params, 0);
++
++    if (set_user_profile(&encoder_ctx[chan]->profile, &input_params->profile, input_params->encoder) < 0) {
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    encoder_ctx[chan]->hw_device_ctx = av_buffer_ref(hw_device_ctx[chan]);
++    if (!encoder_ctx[chan]->hw_device_ctx) {
++        fprintf(stderr, "A hardware device reference create failed.\n");
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++#endif
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++    if ((ret = set_hwframe_ctx(encoder_ctx[chan], hw_device_ctx[chan], input_params, 1)) < 0)
++#else
++    if ((ret = set_hwframe_ctx(encoder_ctx[chan], hw_device_ctx[chan], input_params, 0)) < 0)
++#endif
++    {
++        fprintf(stderr, "Failed to set hwframe context.\n");
++        goto fail;
++    }
++
++    if (!encoder_ctx[chan]->hw_frames_ctx) {
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++
++    if ((ret = avcodec_open2(encoder_ctx[chan], enc_codec, NULL)) < 0) {
++        fprintf(stderr, "Failed to open encode codec. Error code: %s\n", av_err2str(ret));
++        goto fail;
++    }
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    if (!(ost[chan] = avformat_new_stream(ofmt_ctx[chan], NULL)))
++#else
++    if (!(ost[chan] = avformat_new_stream(ofmt_ctx[chan], enc_codec)))
++#endif
++    {
++        fprintf(stderr, "Failed to allocate stream for output format.\n");
++        ret = AVERROR(ENOMEM);
++        goto fail;
++    }
++
++    ost[chan]->time_base      = encoder_ctx[chan]->time_base;
++    ost[chan]->duration       = av_rescale_q(ist[chan]->duration, ist[chan]->time_base, ost[chan]->time_base);
++    ost[chan]->avg_frame_rate = encoder_ctx[chan]->framerate;
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    if ((ret = avcodec_copy_context(ost[chan]->codec, encoder_ctx[chan])) < 0)
++#else
++    if ((ret = avcodec_parameters_from_context(ost[chan]->codecpar, encoder_ctx[chan])) < 0)
++#endif
++    {
++        fprintf(stderr, "Failed to copy the stream parameters. Error code: %s\n", av_err2str(ret));
++        goto fail;
++    }
++
++    /* write the stream header */
++    if ((ret = avformat_write_header(ofmt_ctx[chan], NULL)) < 0) {
++        fprintf(stderr, "Error while writing stream header. Error code: %s\n", av_err2str(ret));
++        goto fail;
++    }
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    if ((ret = encoder_ctx[chan]->codec->init(encoder_ctx[chan])) < 0) {
++        fprintf(stderr, "init encoder failed. Error code: %d\n", ret);
++        goto fail;
++    }
++
++    av_buffer_unref(&ost[chan]->codec->hw_frames_ctx);
++#endif
++
++    return 0;
++
++fail:
++    if (encoder_ctx[chan]) {
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++        avcodec_close(encoder_ctx[chan]);
++#endif
++
++        avcodec_free_context(&encoder_ctx[chan]);
++        encoder_ctx[chan] = NULL;
++    }
++
++    if (ofmt_ctx[chan]) {
++        avio_closep(&ofmt_ctx[chan]->pb);
++        avformat_close_input(&ofmt_ctx[chan]);
++        ofmt_ctx[chan] = NULL;
++    }
++
++    return ret;
++}
++
++//打开输入输出文件，获取信息，找到decoder和encoder，初始化decoder_ctx和encoder_ctx，打开decoder和encoder。
++static int init_dec_enc(int chan, struct option_t *input_params)
++{
++    int ret = 0;
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    av_register_all();
++#endif
++
++    if ((ret = decode_init(chan, input_params)) < 0) {
++        fprintf(stderr, "Init decode failed. Error code: %s\n", av_err2str(ret));
++        return ret;
++    }
++
++    if ((ret = encode_init(chan, input_params)) < 0) {
++        fprintf(stderr, "Init encode failed. Error code: %s\n", av_err2str(ret));
++        return ret;
++    }
++
++    return 0;
++}
++
++static int flush_encoder(int chan, struct option_t *input_params)
++{
++    int      ret     = 0;
++    int      inc     = 0;
++    int      err     = 0;
++    AVPacket enc_pkt = { 0 };
++    int      rawyuv  = strstr(input_params->input, ".yuv") || strstr(input_params->input, ".rgb");
++
++    av_init_packet(&enc_pkt);
++    enc_pkt.data = NULL;
++    enc_pkt.size = 0;
++    enc_pkt.pts  = 0;
++    for (;;) {
++        while ((ret = avcodec_receive_packet(encoder_ctx[chan], &enc_pkt)) == AVERROR(EAGAIN)) {
++            int send_ret = avcodec_send_frame(encoder_ctx[chan], NULL);
++            if (send_ret < 0) {
++                return send_ret;
++            }
++        }
++
++        if (ret < 0 || (ret == AVERROR_EOF && enc_pkt.size == 0)) {
++            return ret;
++        }
++
++        enc_pkt.stream_index = 0;
++
++        if (rawyuv) {
++            if (input_params->vfr_fps) {
++                printf("bbout pts=%ld, dts=%ld\n", enc_pkt.pts, enc_pkt.dts);
++
++                enc_pkt.pts =
++                    av_rescale_q(enc_pkt.pts, encoder_ctx[chan]->time_base, ofmt_ctx[chan]->streams[0]->time_base);
++                enc_pkt.dts =
++                    av_rescale_q(enc_pkt.dts, encoder_ctx[chan]->time_base, ofmt_ctx[chan]->streams[0]->time_base);
++            } else {
++                enc_pkt.pts = enc_pkt.dts = enc_frame_cnt[chan] * ofmt_ctx[chan]->streams[0]->time_base.den /
++                                            ofmt_ctx[chan]->streams[0]->time_base.num /
++                                            (encoder_ctx[chan]->framerate.num / encoder_ctx[chan]->framerate.den);
++            }
++        } else {
++            if ((!input_params->vfr_fps) && (strcmp(input_params->encoder, "av1_vastapi") != 0))
++                av_packet_rescale_ts(&enc_pkt, ifmt_ctx[chan]->streams[video_stream[chan]]->time_base,
++                                     ofmt_ctx[chan]->streams[0]->time_base);
++        }
++        if ((err = av_interleaved_write_frame(ofmt_ctx[chan], &enc_pkt)) < 0) {
++            fprintf(stderr, "Error during writing data to output file. Error code: %s line: %d\n", av_err2str(err),
++                    __LINE__);
++            return err;
++        }
++
++        enc_frame_cnt[chan]++;
++        if (ret == AVERROR_EOF) {
++            break;
++        }
++    }
++    return ret;
++}
++
++static int encode_write(AVFrame *frame, int chan, struct option_t *input_params)
++{
++    int      ret     = 0;
++    int      inc     = 0;
++    AVPacket enc_pkt = { 0 };
++    int      rawyuv  = strstr(input_params->input, ".yuv") || strstr(input_params->input, ".rgb");
++
++    av_init_packet(&enc_pkt);
++    enc_pkt.data = NULL;
++    enc_pkt.size = 0;
++    enc_pkt.pts  = 0;
++
++    if (frame && input_params->vfr_fps) {
++        if (!(frame_cnt[chan] / 100 % 2) && frame_cnt[chan] % 100 >= 0) {
++            frame->pkt_duration = (double)AV_TIME_BASE / input_params->vfr_fps;
++            if (frame_cnt[chan] ==
++                (int)(input_params->fps > input_params->vfr_fps ? input_params->vfr_fps : input_params->fps)) {
++                frame->pkt_duration = (double)AV_TIME_BASE / av_q2d(input_params->frame_rate);
++            }
++        } else {
++            frame->pkt_duration = (double)AV_TIME_BASE / av_q2d(input_params->frame_rate);
++        }
++
++        inc              = (int)((double)frame->pkt_duration / start_duration[chan] + 0.5);
++        frame->pts       = frame_pts[chan] + inc;
++        frame->time_base = AV_TIME_BASE_Q;
++
++        if (frame_cnt[chan] == 1) {
++            frame->pts = 0;
++        }
++
++        frame_pts[chan] = frame->pts;
++    }
++
++#ifdef FFMPEG_N26
++    int got_frame = 0;
++#else
++    if ((ret = avcodec_send_frame(encoder_ctx[chan], frame)) < 0) {
++        if (ret != AVERROR_EOF)
++            fprintf(stderr, "Error during encoding. Error code: %d %s\n", ret, av_err2str(ret));
++        goto end;
++    }
++#endif
++
++    while (1) {
++#ifdef FFMPEG_N26
++        if ((ret = avcodec_encode_video2(encoder_ctx[chan], &enc_pkt, frame, &got_frame)) < 0)
++#else
++        if ((ret = avcodec_receive_packet(encoder_ctx[chan], &enc_pkt)) < 0)
++#endif
++        {
++            goto end;
++        }
++
++#ifndef RESET_TEST
++        if (frame_cnt[chan] == input_params->frame_cnt + 1) {
++            printf("finish frame encode, count: %d\n", frame_cnt[chan]);
++            ret = -1;
++            break;
++        }
++#endif
++#ifdef FFMPEG_N26
++        if (!got_frame) {
++            printf("&got_frame=%p, got_frame:%d\n", &got_frame, got_frame);
++            return 0;
++        }
++
++        if (enc_pkt.data) {
++            enc_pkt.data += ret;
++            enc_pkt.size -= ret;
++        }
++#endif
++
++        enc_pkt.stream_index = 0;
++
++        if (rawyuv) {
++            if (input_params->vfr_fps) {
++                enc_pkt.pts =
++                    av_rescale_q(enc_pkt.pts, encoder_ctx[chan]->time_base, ofmt_ctx[chan]->streams[0]->time_base);
++                enc_pkt.dts =
++                    av_rescale_q(enc_pkt.dts, encoder_ctx[chan]->time_base, ofmt_ctx[chan]->streams[0]->time_base);
++            } else {
++                enc_pkt.pts = enc_pkt.dts = enc_frame_cnt[chan] * ofmt_ctx[chan]->streams[0]->time_base.den /
++                                            ofmt_ctx[chan]->streams[0]->time_base.num /
++                                            (encoder_ctx[chan]->framerate.num / encoder_ctx[chan]->framerate.den);
++            }
++        } else {
++            if ((!input_params->vfr_fps) && (strcmp(input_params->encoder, "av1_vastapi") != 0))
++                av_packet_rescale_ts(&enc_pkt, ifmt_ctx[chan]->streams[video_stream[chan]]->time_base,
++                                     ofmt_ctx[chan]->streams[0]->time_base);
++        }
++
++        if ((ret = av_interleaved_write_frame(ofmt_ctx[chan], &enc_pkt)) < 0) {
++            fprintf(stderr, "Error during writing data to output file. Error code: %s line: %d\n", av_err2str(ret),
++                    __LINE__);
++            return ret;
++        }
++
++        enc_frame_cnt[chan]++;
++
++#ifdef FFMPEG_N26
++        return 0;
++#endif
++
++#ifdef RESET_TEST
++        // if (enc_frame_cnt[chan] == input_params->frame_cnt) {
++        //     printf("finish frame encode, count: %d\n", enc_frame_cnt[chan]);
++        //     ret = -1;
++        //     break;
++        // }
++#endif
++    }
++
++end:
++    ret = ((ret == AVERROR(EAGAIN)) ? 0 : ret);
++    return ret;
++}
++
++#ifdef RESET_TEST
++// vastai reset
++static int process_reset(int chan, struct option_t *input_params)
++{
++    int ret = 0;
++
++    printf("chan %d reset frame_cnt=%d, input_cnt=%d\n", chan, frame_cnt[chan], input_cnt[chan]);
++
++    // while (1) {
++    //     if ((ret = encode_write(NULL, chan, input_params)) < 0) {
++    //         if (ret != AVERROR_EOF)
++    //             fprintf(stderr, "Error during flush encoding and writing. %d %s\n", ret, av_err2str(ret));
++    //         break;
++    //     }
++    // }
++    ret = flush_encoder(chan, input_params);
++
++    encoder_ctx[chan]->width  = decoder_ctx[chan]->width;
++    encoder_ctx[chan]->height = decoder_ctx[chan]->height;
++
++    ret = avcodec_vastapi_reset_flush(encoder_ctx[chan]);
++    return ret;
++}
++#endif
++
++static int dec_enc(AVPacket *pkt, int chan, int rawyuv, struct option_t *input_params)
++{
++    int      ret          = 0;
++    Usrdata  da1          = { 0 };
++    AVFrame *hw_frame_dec = NULL;
++    AVFrame *hw_frame_enc = NULL;
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++    uint64_t frame_addr;
++#endif
++
++    da1.chn    = chan;
++    da1.cnt    = cnt[chan];
++    da1.endflg = 0;
++
++#if !defined FFMPEG_N26 && !defined FFMPEG_N311
++    if ((ret = avcodec_send_packet(decoder_ctx[chan], pkt)) < 0) {
++        fprintf(stderr, "Error during decoding. Error code: %s\n", av_err2str(ret));
++        return ret;
++    }
++#endif
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++    int got_frame = 1;
++
++    while (pkt->size > 0 || (!pkt->data && got_frame))
++#else
++    while (ret >= 0)
++#endif
++    {
++        if (!(da1.frame = av_frame_alloc()))
++            return AVERROR(ENOMEM);
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++        ret = avcodec_decode_video2(decoder_ctx[chan], da1.frame, &got_frame, pkt);
++        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF || got_frame <= 0)
++#else
++        ret = avcodec_receive_frame(decoder_ctx[chan], da1.frame);
++        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF)
++#endif
++        {
++            av_frame_free(&da1.frame);
++            return 0;
++        } else if (ret < 0) {
++            fprintf(stderr, "Error while decoding. Error code: %s\n", av_err2str(ret));
++            goto fail;
++        }
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++        if (pkt->data) {
++            pkt->data += ret;
++            pkt->size -= ret;
++        }
++#endif
++
++        da1.hw_frame_dec     = NULL;
++        da1.frame->pict_type = AV_PICTURE_TYPE_NONE;
++        cnt[chan]++;
++        input_cnt[chan]++;
++
++        if (rawyuv) {
++            if (!(hw_frame_dec = av_frame_alloc())) {
++                fprintf(stderr, "Cannot alloc hardware frame. Error: %s.\n", av_err2str(ret));
++                return AVERROR(ENOMEM);
++            }
++
++            if ((ret = av_hwframe_get_buffer(decoder_ctx[chan]->hw_frames_ctx, hw_frame_dec, 0)) < 0) {
++                fprintf(stderr, "Failed to get hw frame buffer, Error: %s.\n", av_err2str(ret));
++                goto fail;
++            }
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++            uint64_t addr = EXTERNAL_BUFFER_START_ADDR + (cnt[chan] % 200) * 10 * 1024 * 1024;
++            av_hwframe_set_addr_to_surfaceid(hw_frame_dec, addr);
++#endif
++
++            if ((ret = av_hwframe_transfer_data(hw_frame_dec, da1.frame, 0)) < 0) {
++                fprintf(stderr, "Failed to transfer frame data to surface, Error: %s.\n", av_err2str(ret));
++                goto fail;
++            }
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++            ret = av_hwframe_get_addr_from_surfaceid(hw_frame_dec, &frame_addr);
++
++            if (!(hw_frame_enc = av_frame_alloc())) {
++                fprintf(stderr, "Cannot alloc hardware frame. Error: %s.\n", av_err2str(ret));
++                ret = AVERROR(ENOMEM);
++                goto fail;
++            }
++
++            if ((ret = av_hwframe_get_buffer(encoder_ctx[chan]->hw_frames_ctx, hw_frame_enc, 0)) < 0) {
++                fprintf(stderr, "Failed to get hw frame buffer, Error: %s.\n", av_err2str(ret));
++                goto fail;
++            }
++            printf("hw frame add 0x%lx\n", frame_addr);
++            av_hwframe_set_addr_to_surfaceid(hw_frame_enc, frame_addr);
++
++            da1.hw_frame_dec = hw_frame_dec; // if free hw_frame_dec here, yuv buffer may be released.
++#else
++            hw_frame_enc = hw_frame_dec;
++#endif
++            av_frame_free(&da1.frame);
++            da1.frame = hw_frame_enc;
++        }
++
++        av_hwframe_sync_surface(da1.frame);
++
++        en_queue((void *)queue_g[chan], (void *)&da1, sizeof(Usrdata));
++        if (decode_num[chan]++ == input_params->frame_cnt - 1) {
++            printf("finish process dec, count: %d\n", decode_num[chan]);
++            // ret = -1;
++            decode_end[chan] = 1;
++            // break;
++        }
++    fail:
++        if (ret < 0)
++            return ret;
++    }
++
++    return 0;
++}
++
++#ifdef VASTAI_AVFRAME_TEST
++/* Read yuv data to AVFrame from file directly */
++static int dec_enc_test_avframe(struct option_t *input_params, int chan)
++{
++    int                ret = 0, i = 0;
++    FILE              *fd;
++    AVHWFramesContext *frames_ctx = (AVHWFramesContext *)(encoder_ctx[chan]->hw_frames_ctx->data);
++    AVFrame           *hw_frame;
++    AVFrame           *dma_frame[4];
++    VastFrameInfo      info;
++
++    fd = fopen(input_params->input, "r+");
++
++    info.format = frames_ctx->sw_format;
++    info.width  = frames_ctx->width;
++    info.height = frames_ctx->height;
++
++    for (i = 0; i < DMA_BUFFER_NUM_MAX; i++) {
++        dma_frame[i] = av_frame_alloc_vastai(encoder_ctx[chan]->hw_frames_ctx, &info);
++    }
++
++    while (feof(fd) == 0) {
++        Usrdata da1;
++        da1.chn    = chan;
++        da1.cnt    = cnt[chan];
++        da1.endflg = 0;
++        da1.frame  = dma_frame[cnt[chan] % DMA_BUFFER_NUM_MAX];
++
++        cnt[chan]++;
++
++        if (!(hw_frame = av_frame_alloc())) {
++            fprintf(stderr, "Cannot alloc hardware frame. Error: %s.\n", av_err2str(ret));
++            return AVERROR(ENOMEM);
++        }
++
++        if ((ret = av_hwframe_get_buffer(encoder_ctx[chan]->hw_frames_ctx, hw_frame, 0)) < 0) {
++            fprintf(stderr, "Failed to get hw frame buffer, Error: %s.\n", av_err2str(ret));
++            av_frame_free(&hw_frame);
++            return -1;
++        }
++
++        int plane_number = 0;
++        int src_linesizes[3];
++        src_linesizes[0] = frames_ctx->width;
++        if (da1.frame->format == AV_PIX_FMT_YUV420P) {
++            plane_number     = 3;
++            src_linesizes[1] = frames_ctx->width / 2;
++            src_linesizes[2] = frames_ctx->width / 2;
++        } else if (da1.frame->format == AV_PIX_FMT_NV12) {
++            plane_number     = 2;
++            src_linesizes[1] = frames_ctx->width;
++            src_linesizes[2] = 0;
++        } else {
++            fprintf(stderr, "%s Unsupported format: %d.\n", __func__, da1.frame->format);
++            return -1;
++        }
++
++        int height = da1.frame->height;
++        int plane  = 0;
++        for (; plane < plane_number; plane++) {
++            uint8_t *dst          = da1.frame->data[plane];
++            int      dst_linesize = da1.frame->linesize[plane];
++            int      src_linesize = src_linesizes[plane];
++            int      tmp_height;
++            tmp_height = plane > 0 ? height / 2 : height;
++            for (; tmp_height > 0; tmp_height--) {
++                ret = fread(dst, src_linesize, 1, fd);
++                if (!ret) {
++                    av_frame_free(&hw_frame);
++                    goto fail;
++                }
++                dst += dst_linesize;
++            }
++        }
++
++        if ((ret = av_hwframe_transfer_data(hw_frame, da1.frame, 0)) < 0) {
++            fprintf(stderr, "Failed to transfer frame data to surface, Error: %s.\n", av_err2str(ret));
++            av_frame_free(&da1.frame);
++            return -1;
++        }
++
++        da1.frame = hw_frame;
++
++        en_queue((void *)queue_g[chan], (void *)&da1, sizeof(Usrdata));
++    }
++
++fail:
++    for (i = 0; i < DMA_BUFFER_NUM_MAX; i++) {
++        av_frame_free(&dma_frame[i]);
++    }
++
++    fclose(fd);
++
++    return 0;
++}
++#endif
++
++#ifdef DMABUFFER_FD_ENCODE_TEST
++static int get_dmabuffer_fd()
++{
++    return 0;
++}
++
++static int dec_enc_test_dmabuffer(struct option_t *input_params, int chan)
++{
++    int                ret = 0, i = 0;
++    FILE              *fd;
++    AVHWFramesContext *frames_ctx = (AVHWFramesContext *)(encoder_ctx[chan]->hw_frames_ctx->data);
++    AVFrame           *hw_frame, *src_frame;
++    VastFrameInfo      info;
++    int                dmabuffer_fd = 0;
++
++    fd = fopen(input_params->input, "r+");
++
++    while (feof(fd) == 0) {
++        Usrdata da1;
++        da1.chn    = chan;
++        da1.cnt    = cnt[chan];
++        da1.endflg = 0;
++
++        cnt[chan]++;
++
++        // prepare hw frame
++        if (!(hw_frame = av_frame_alloc())) {
++            fprintf(stderr, "Cannot alloc hardware frame. Error: %s.\n", av_err2str(ret));
++            return AVERROR(ENOMEM);
++        }
++
++        if ((ret = av_hwframe_get_buffer(encoder_ctx[chan]->hw_frames_ctx, hw_frame, 0)) < 0) {
++            fprintf(stderr, "Failed to get hw frame buffer, Error: %s.\n", av_err2str(ret));
++            av_frame_free(&hw_frame);
++            return -1;
++        }
++
++        // prepare src frame from dmabuffer fd
++        src_frame = av_frame_alloc();
++        if (!src_frame) {
++            av_log(frames_ctx, "%s %d Cannot alloc src frame. Error: %s.\n", __func__, __LINE__);
++            return AVERROR(ENOMEM);
++        }
++
++        dmabuffer_fd      = get_dmabuffer_fd();
++        src_frame->opaque = (void *)&dmabuffer_fd;
++
++        // transfer dmabuffer data to device
++        if ((ret = av_hwframe_transfer_data_ex(hw_frame, src_frame, INPUT_TYPE_FD)) < 0) {
++            av_log(frames_ctx, "%s %d failed to transfer data to device: %d.\n", __func__, __LINE__, ret);
++            av_frame_free(&src_frame);
++            av_frame_free(&hw_frame);
++            return -1;
++        }
++
++        da1.frame = hw_frame;
++
++        en_queue((void *)queue_g[chan], (void *)&da1, sizeof(Usrdata));
++    }
++
++fail:
++    fclose(fd);
++
++    return 0;
++}
++#endif
++
++// 编码-transcoding 子线程
++static void *process_enc(void *arg)
++{
++    int                 chan = 0, ret = 0;
++    struct thread_info *ti           = (struct thread_info *)arg;
++    struct option_t    *input_params = (struct option_t *)ti->handle;
++    chan                             = ti->thread_chn;
++
++    while (1) {
++        Usrdata *dap;
++        dap = read_queue((void *)queue_g[chan]);
++        if (!dap->endflg)
++            frame_cnt[chan]++;
++
++        if (input_params->enable_idr) {
++            if (dap->frame && frame_cnt[chan] % 20 == 0)
++                dap->frame->pict_type = AV_PICTURE_TYPE_I;
++        }
++
++        if (input_params->enable_dynamic_bitrate) {
++            if (frame_cnt[chan] % 20 == 0 && dap->frame) {
++                AVFrameSideData *br_side = NULL;
++                av_frame_remove_side_data(dap->frame, AV_FRAME_DATE_VASTAI_BITRATE_EXT1);
++                br_side = av_frame_new_side_data(dap->frame, AV_FRAME_DATE_VASTAI_BITRATE_EXT1, sizeof(uint32_t) * 3);
++                if (br_side) {
++                    uint32_t *data = (uint32_t *)br_side->data;
++                    data[0]        = (frame_cnt[chan] + 8001) % 2000; // target bitrate, kbps
++                    data[1]        = 0; // vbvMaxrate,  kbps, need set to 0 if use default;
++                    data[2]        = 0; // hrd bufsize, kbps, need set to 0 if use default;
++                }
++            }
++        }
++
++        if (input_params->enable_dynamic_fps) {
++            if (frame_cnt[chan] % 100 == 0 && dap->frame) {
++                AVFrameSideData *fr_side = NULL;
++                av_frame_remove_side_data(dap->frame, AV_FRAME_DATA_VASTAI_FRAMERATE);
++                fr_side = av_frame_new_side_data(dap->frame, AV_FRAME_DATA_VASTAI_FRAMERATE, sizeof(uint32_t));
++                if (fr_side) {
++                    uint32_t *data = (uint32_t *)fr_side->data;
++                    data[0]        = 60; // target bitrate, kbps
++                }
++            }
++        }
++
++        if (input_params->crf) {
++            if (dap->frame) {
++                AVFrameSideData *crf_side = NULL;
++                av_frame_remove_side_data(dap->frame, AV_FRAME_DATA_VASTAI_CRF);
++                crf_side = av_frame_new_side_data(dap->frame, AV_FRAME_DATA_VASTAI_CRF, 2 * sizeof(int32_t));
++                if (crf_side) {
++                    int32_t *data = (int32_t *)crf_side->data;
++                    data[0]       = input_params->crf + (frame_cnt[chan] % 2) * 20; // change crf every frames
++                    data[1]       = frame_cnt[chan] / 100 % 2;                      // crf rc reset
++                }
++            }
++        }
++
++        if (input_params->enable_dynamic_keyint) {
++            if (frame_cnt[chan] % 100 == 0 && dap->frame) {
++                AVFrameSideData *fr_side = NULL;
++                av_frame_remove_side_data(dap->frame, AV_FRAME_DATA_VASTAI_KEYINT);
++                fr_side = av_frame_new_side_data(dap->frame, AV_FRAME_DATA_VASTAI_KEYINT, sizeof(uint32_t));
++                if (fr_side) {
++                    uint32_t *data = (uint32_t *)fr_side->data;
++                    data[0]        = (frame_cnt[chan] / 100 % 10) * 10; // target keyint
++                }
++            }
++        }
++
++        if (input_params->enable_sei) {
++            if (dap->frame != NULL) {
++                int              index;
++                uint8_t         *buffer    = NULL;
++                AVFrameSideData *side_data = NULL;
++                struct timeval   tv;
++                uint64_t         encode_start_ms;
++                av_frame_remove_side_data(dap->frame, AV_FRAME_DATA_UDU_SEI);
++
++                for (index = 0; index < SEI_COUNT; index++) {
++                    side_data = av_frame_new_side_data(dap->frame, AV_FRAME_DATA_UDU_SEI, SEI_BUFFER_SIZE);
++                    if (!side_data) {
++                        fprintf(stderr, "failed to create new side data\n");
++                        return NULL;
++                    }
++
++                    buffer = side_data->data;
++                    memcpy(buffer, encode_h264_sei_appdata_uuid[index % 2],
++                           sizeof(encode_h264_sei_appdata_uuid[index % 2]));
++                    buffer += sizeof(encode_h264_sei_appdata_uuid[index % 2]);
++
++                    memcpy(buffer, &frame_cnt[chan], sizeof(frame_cnt[chan]));
++                    buffer += sizeof(frame_cnt[chan]);
++
++                    gettimeofday(&tv, NULL);
++                    encode_start_ms = tv.tv_sec * 1000 + tv.tv_usec / 1000;
++                    memcpy(buffer, &encode_start_ms, sizeof(encode_start_ms));
++                    buffer += sizeof(encode_start_ms);
++                }
++            }
++        }
++
++        if (input_params->enable_roi) {
++            if (dap->frame != NULL) {
++                int32_t roimap_value[3] = { -31, 31, 0 };
++                int32_t roimap_index;
++                int     x = 0, y = 0;
++                roimap_index = (frame_cnt[chan] / 10) % 3;
++                // static int32_t roimap_last_value = 0;
++
++                // if(roimap_value[roimap_index] != roimap_last_value)
++                {
++                    AVFrameSideData *side_data = NULL;
++
++                    uint32_t width, height;
++                    uint32_t roimap_block_unit;
++                    uint32_t blksize;
++                    uint32_t roiwidth, roiheight, roimap_size;
++                    uint8_t *buffer = NULL;
++
++                    char *p;
++                    width = strtol(input_params->video_size, (void *)&p, 10);
++                    if (*p)
++                        p++;
++                    height = strtol(p, (void *)&p, 10);
++
++                    p                 = strstr(input_params->vast_params, "roiMapDeltaQpBlockUnit");
++                    p                 = strchr(p, '=');
++                    roimap_block_unit = atoi(p + 1);
++
++                    blksize     = 64 >> (roimap_block_unit & 3);
++                    roiwidth    = (width + blksize - 1) / blksize;
++                    roiheight   = (height + blksize - 1) / blksize;
++                    roimap_size = roiwidth * roiheight;
++
++                    if (!side_data) {
++                        side_data = av_frame_new_side_data(dap->frame, AV_FRAME_DATA_ROIMAP, roimap_size);
++                        if (!side_data) {
++                            fprintf(stderr, "failed to create new roimap side data\n");
++                            return NULL;
++                        }
++                    }
++
++                    buffer = side_data->data;
++                    memset(buffer, 0, roiwidth * roiheight);
++                    for (y = 0; y < roiheight / 3; y++) {
++                        for (x = 0; x < roiwidth / 2; x++) {
++                            buffer[y * roiwidth + x] = -roimap_value[roimap_index];
++                        }
++                    }
++
++                    for (y = roiheight / 3; y < roiheight; y++) {
++                        for (x = 3 * roiwidth / 4; x < roiwidth; x++) {
++                            buffer[y * roiwidth + x] = roimap_value[roimap_index];
++                        }
++                    }
++                    // roimap_last_value = roimap_value[roimap_index];
++                }
++            }
++        }
++
++#ifdef RESET_TEST
++        if (input_params->enable_reset_resolution) {
++            if (frame_cnt[chan] == input_params->reset_frame_num + 1) {
++                printf("chan %d will reset resolution\n", chan);
++                if ((ret = process_reset(chan, input_params))) {
++                    fprintf(stderr, "process_reset error. %d %s\n", ret, av_err2str(ret));
++                    thread_end[chan] = 1;
++                }
++            }
++        }
++#endif
++
++        if (dap->frame) {
++            if ((ret = encode_write(dap->frame, chan, input_params)) < 0) {
++                if (ret != AVERROR_EOF) {
++                    fprintf(stderr, "Error during encoding and writing. %d %s\n", ret, av_err2str(ret));
++                    thread_end[chan] = 1;
++                }
++            }
++        }
++
++        av_frame_free(&dap->frame);
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++        if (dap->hw_frame_dec)
++            av_frame_free(&dap->hw_frame_dec);
++#endif
++
++        de_queue((void *)queue_g[chan]);
++
++        if (dap->endflg == 1 || thread_end[chan]) {
++            printf("chan %d here will end -------------------\n", chan);
++
++            // flush encoder
++            // while (1) {
++            //     if ((ret = encode_write(NULL, chan, input_params)) < 0) {
++            //         if (ret != AVERROR_EOF)
++            //             fprintf(stderr, "Error during flush encoding and writing. %d %s\n", ret, av_err2str(ret));
++            //         break;
++            //     }
++            // }
++            ret = flush_encoder(chan, input_params);
++            av_write_trailer(ofmt_ctx[chan]);
++
++            if (thread_end[chan]) {
++                do {
++                    de_queue((void *)queue_g[chan]);
++                } while (!is_empty((void *)queue_g[chan]));
++            }
++
++            printf("chan %d transcode success! total frame_cnt %d, cnt %d\n", chan, frame_cnt[chan], cnt[chan]);
++
++            break;
++        }
++    }
++
++    return NULL;
++}
++
++// 解码-transcoding 子线程
++static void *process_dec(void *arg)
++{
++    int                 chan         = 0;
++    int                 ret          = 0;
++    AVPacket            dec_pkt      = { 0 };
++    Usrdata             da1          = { 0 };
++    struct thread_info *ti           = (struct thread_info *)arg;
++    struct option_t    *input_params = (struct option_t *)ti->handle;
++    char               *fiename_in   = input_params->input;
++    int                 rawyuv       = 0;
++
++#ifdef RESET_TEST
++    int rawyuv_in2 = 0;
++#endif
++
++    rawyuv = (strstr(fiename_in, ".yuv") || strstr(fiename_in, ".rgb")) ? 1 : 0;
++    chan   = ti->thread_chn;
++
++    if (thread_end[chan])
++        return NULL;
++
++        /* read all packets and only transcoding video */
++#ifdef VASTAI_AVFRAME_TEST
++    dec_enc_test_avframe(input_params, chan);
++#elif defined DMABUFFER_FD_ENCODE_TEST
++    dec_enc_test_dmabuffer(input_params, chan);
++#else
++    while (ret >= 0 && !thread_end[chan] && !decode_end[chan]) {
++#ifdef RESET_TEST
++        if (input_params->enable_reset_resolution) {
++            if (input_cnt[chan] == input_params->reset_frame_num) {
++                AVDictionary *format_opts = NULL;
++                char         *fiename_in2 = input_params->reset_input;
++                AVStream     *video       = NULL;
++                AVCodec      *decoder     = NULL;
++
++                printf("chan=%d encode reset w x h\n", chan);
++
++                rawyuv_in2 = strstr(fiename_in2, ".yuv") || strstr(fiename_in2, ".rgb");
++                if (rawyuv_in2) {
++                    av_dict_set(&format_opts, "video_size", input_params->reset_video_size, 0);
++                    av_dict_set(&format_opts, "pixel_format", input_params->pixel_format, 0);
++
++                    if ((ret = avformat_open_input(&ifmt_ctx2[chan], fiename_in2, NULL, &format_opts)) < 0) {
++                        fprintf(stderr, "Cannot open input file '%s', Error code: %s\n", fiename_in2, av_err2str(ret));
++                        break;
++                    }
++                } else {
++                    if ((ret = avformat_open_input(&ifmt_ctx2[chan], fiename_in2, NULL, NULL)) < 0) {
++                        fprintf(stderr, "Cannot open input file %s, Error code: %s\n", fiename_in2, av_err2str(ret));
++                        break;
++                    }
++                }
++
++                if ((ret = avformat_find_stream_info(ifmt_ctx2[chan], NULL)) < 0) {
++                    fprintf(stderr, "Cannot find input stream information. Error code: %s\n", av_err2str(ret));
++                    break;
++                }
++
++                if ((ret = av_find_best_stream(ifmt_ctx2[chan], AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0)) < 0) {
++                    fprintf(stderr, "Cannot find a video stream in the input file. Error code: %s\n", av_err2str(ret));
++                    break;
++                }
++
++                video                     = ifmt_ctx2[chan]->streams[video_stream[chan]];
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++                decoder_ctx[chan]->width  = video->codec->width;
++                decoder_ctx[chan]->height = video->codec->height;
++#else
++                decoder_ctx[chan]->width  = video->codecpar->width;
++                decoder_ctx[chan]->height = video->codecpar->height;
++#endif
++
++#ifdef EXTERNA_BUFFER_ENCODE_TEST
++                set_hwframe_ctx(decoder_ctx[chan], hw_device_ctx[chan], input_params, 1);
++#else
++                set_hwframe_ctx(decoder_ctx[chan], hw_device_ctx[chan], input_params, 0);
++#endif
++            }
++
++            if ((ret = av_read_frame(ifmt_ctx[chan], &dec_pkt)) < 0 ||
++                input_cnt[chan] >= input_params->reset_frame_num) {
++                if ((ret = av_read_frame(ifmt_ctx2[chan], &dec_pkt)) < 0) {
++                    if (loop[chan]) {
++                        avio_closep(&ofmt_ctx[chan]->pb);
++
++                        if ((ret = avio_open(&ofmt_ctx[chan]->pb, input_params->output_file, AVIO_FLAG_WRITE)) < 0) {
++                            fprintf(stderr, "Cannot open output file. Error code: %s\n", av_err2str(ret));
++                            break;
++                        }
++
++                        if (loop[chan] == -1)
++                            loop[chan] = 0;
++
++                        printf("thread %d looping %d................................ \n", chan, loop[chan]);
++                        loop[chan]--;
++
++                        av_seek_frame(ifmt_ctx[chan], video_stream[chan], 0, AVSEEK_FLAG_BYTE);
++
++                        if ((ret = av_read_frame(ifmt_ctx[chan], &dec_pkt)) < 0) {
++                            fprintf(stderr, "looping fail!!!\n");
++                            break;
++                        }
++                    } else {
++                        break;
++                    }
++                }
++            }
++        } else
++#endif
++        {
++            if ((ret = av_read_frame(ifmt_ctx[chan], &dec_pkt)) < 0) {
++                if (loop[chan]) {
++                    // avio_closep(&ofmt_ctx[chan]->pb);
++
++                    // if ((ret = avio_open(&ofmt_ctx[chan]->pb, input_params->output_file, AVIO_FLAG_WRITE)) < 0) {
++                    //     fprintf(stderr, "Cannot open output file. Error code: %s\n", av_err2str(ret));
++                    //     break;
++                    // }
++
++                    if (loop[chan] == -1)
++                        loop[chan] = 0;
++
++                    printf("thread %d looping %d................................ \n", chan, loop[chan]);
++                    loop[chan]--;
++
++                    av_seek_frame(ifmt_ctx[chan], video_stream[chan], 0, AVSEEK_FLAG_BYTE);
++
++                    if ((ret = av_read_frame(ifmt_ctx[chan], &dec_pkt)) < 0) {
++                        fprintf(stderr, "looping fail!!!\n");
++                        break;
++                    }
++                } else {
++                    break;
++                }
++            }
++        }
++
++        if (video_stream[chan] == dec_pkt.stream_index)
++            ret = dec_enc(&dec_pkt, chan, rawyuv, input_params);
++
++        av_packet_unref(&dec_pkt);
++    }
++
++    /* flush decoder */
++    dec_pkt.data = NULL;
++    dec_pkt.size = 0;
++    ret          = dec_enc(&dec_pkt, chan, rawyuv, input_params);
++
++    av_packet_unref(&dec_pkt);
++#endif
++
++    da1.chn    = chan;
++    da1.cnt    = cnt[chan];
++    da1.endflg = 1;
++    da1.frame  = NULL;
++
++    en_queue((void *)queue_g[chan], (void *)&da1, sizeof(Usrdata));
++
++    return NULL;
++}
++
++static int transcode(struct option_t *input_params)
++{
++    int                ret                        = 0;
++    int                chan                       = 0; // 线程号
++    int                thread_sum                 = input_params->thread_num;
++    struct thread_info usrarg_enc[MAX_THREAD_NUM] = { 0 };
++    struct thread_info usrarg_dec[MAX_THREAD_NUM] = { 0 };
++
++    // 初始化变量
++    for (chan = 0; chan < thread_sum; chan++) {
++        ifmt_ctx[chan]      = NULL;
++        ofmt_ctx[chan]      = NULL;
++        decoder_ctx[chan]   = NULL;
++        encoder_ctx[chan]   = NULL;
++        video_stream[chan]  = -1;
++        cnt[chan]           = 0;
++        queue_g[chan]       = init_queue();
++        thread_end[chan]    = 0;
++        loop[chan]          = input_params->loop;
++        frame_pts[chan]     = 0;
++        frame_cnt[chan]     = 0;
++        enc_frame_cnt[chan] = 0;
++        input_cnt[chan]     = 0;
++    }
++
++    for (chan = 0; chan < thread_sum; chan++) {
++        if ((ret = init_dec_enc(chan, input_params)) < 0) {
++            printf("init dec and enc error! %d\n", ret);
++            return ret;
++        }
++
++        usrarg_dec[chan].thread_chn = chan;
++        usrarg_dec[chan].thread_id  = chan;
++        usrarg_dec[chan].handle     = input_params;
++        if ((pthread_create(&usrarg_dec[chan].thread_id, NULL, process_dec, (void *)&usrarg_dec[chan])) == -1) {
++            printf("create process dec error!\n");
++            return -1;
++        }
++
++        usrarg_enc[chan].thread_chn = chan;
++        usrarg_enc[chan].thread_id  = chan;
++        usrarg_enc[chan].handle     = input_params;
++        if ((pthread_create(&usrarg_enc[chan].thread_id, NULL, process_enc, (void *)&usrarg_enc[chan])) == -1) {
++            printf("create process enc error!\n");
++            return -1;
++        }
++    }
++
++    for (chan = 0; chan < thread_sum; chan++) {
++        pthread_join(usrarg_dec[chan].thread_id, NULL);
++        pthread_join(usrarg_enc[chan].thread_id, NULL);
++    }
++
++    for (chan = 0; chan < thread_sum; chan++) {
++        destroy_queue((void *)queue_g[chan]);
++
++        if (ofmt_ctx[chan]->pb)
++            avio_closep(&ofmt_ctx[chan]->pb);
++
++#if defined FFMPEG_N26 || defined FFMPEG_N311
++        avcodec_close(decoder_ctx[chan]);
++        avcodec_close(encoder_ctx[chan]);
++        avformat_close_input(&ifmt_ctx[chan]);
++        avformat_close_input(&ofmt_ctx[chan]);
++        avcodec_free_context(&encoder_ctx[chan]);
++#else
++        avformat_close_input(&ifmt_ctx[chan]);
++        avformat_close_input(&ofmt_ctx[chan]);
++        avcodec_free_context(&decoder_ctx[chan]);
++        avcodec_free_context(&encoder_ctx[chan]);
++#endif
++
++        decoder_ctx[chan] = NULL;
++        encoder_ctx[chan] = NULL;
++        ifmt_ctx[chan]    = NULL;
++        ofmt_ctx[chan]    = NULL;
++        thread_end[chan]  = 1;
++        frame_pts[chan]   = 0;
++        frame_cnt[chan]   = 0;
++
++        av_buffer_unref(&hw_device_ctx[chan]); // 释放硬件资源
++    }
++
++    return 0;
++}
++
++static void usage(const char *program)
++{
++    fprintf(stderr, "\nUsage: %s [options]\n", program);
++    fprintf(stderr, "\n");
++    fprintf(stderr, "\t-i    input video file.  e.g. "
++                    "/video-case/video_xiaoling/test_encode/BQTerrace_yuv420p_1920x1080_60_50.yuv\n");
++    fprintf(stderr, "\t-o    output video file. e.g. /home/xiaoling/video/out.h264\n");
++    fprintf(stderr, "\t-r    render node.       e.g. /dev/vastai_video0\n");
++    fprintf(stderr, "\t-f    encode fps.        e.g. 30.0\n");
++    fprintf(stderr, "\t-b    encode bitrate.    e.g. 2000000\n");
++    fprintf(stderr, "\t-s    input video size.  e.g. 1920x1080\n");
++    fprintf(stderr, "\t-e    encoder.           e.g. h264_vastapi\n");
++    fprintf(stderr, "\t-p    encode profile.    e.g. main\n");
++    fprintf(stderr, "\t-l    encode levle.      e.g. 1.0\n");
++    fprintf(stderr, "\t-t    thread cnt.        default 1, max 32\n");
++    fprintf(stderr, "\t-n    number of actual transcoding frames.   default -1, means end of file\n");
++    fprintf(stderr, "\t-c    run count.         default 1\n");
++    fprintf(stderr, "\t-d    enable AV_LOG_DEBUG\n");
++
++    fprintf(stderr, "\t--vast_params        encode params\n");
++    fprintf(stderr, "\t--pix_fmt            input video pixel format.       e.g. nv12\n");
++    fprintf(stderr, "\t--loop               loop count.                     default 0, -1 means infinite loop\n");
++    fprintf(stderr, "\t--vfr                vfr interval.                   default 0(disenable)\n");
++    fprintf(stderr, "\t--crf                crf value.                      default 0(disenable)\n");
++    fprintf(stderr, "\t--reset              enable reset encode resolution. default 0(disenable)\n");
++    fprintf(stderr, "\t--reset_input        reset input file\n");
++    fprintf(stderr, "\t--reset_size         reset input file video size.    e.g. 1920x1080\n");
++    fprintf(stderr, "\t--reset_num          reset input file's total frame num\n");
++    fprintf(stderr, "\t--roi                enable roi.                     default 0(disenable)\n");
++    fprintf(stderr, "\t--sei                enable sei.                     default 0(disenable)\n");
++    fprintf(stderr, "\t--idr                enable idr.                     default 0(disenable)\n");
++    fprintf(stderr, "\t--dynamic_bitrate    enable dynamic bitrate.         default 0(disenable)\n");
++    fprintf(stderr, "\t--dynamic_fps        enable dynamic fps.             default 0(disenable)\n");
++    fprintf(stderr, "\t--dynamic_keyint     enable dynamic keyint.          default 0(disenable)\n");
++    fprintf(stderr, "\t--save               save file.                      default 1(enable)\n");
++    fprintf(stderr, "\t--help               help manuals\n");
++}
++
++static int parse_options(int argc, char **argv, struct option_t *input_params)
++{
++    static const char    optstr[]       = "i:o:r:f:b:s:e:p:n:l:c:t:d";
++    static struct option long_options[] = { { "vast_params", required_argument, 0, 0 },
++                                            { "pix_fmt", required_argument, 0, 0 },
++                                            { "loop", required_argument, 0, 0 },
++                                            { "vfr", required_argument, 0, 0 },
++                                            { "crf", required_argument, 0, 0 },
++                                            { "reset", required_argument, 0, 0 },
++                                            { "reset_input", required_argument, 0, 0 },
++                                            { "reset_size", required_argument, 0, 0 },
++                                            { "reset_num", required_argument, 0, 0 },
++                                            { "roi", required_argument, 0, 0 },
++                                            { "sei", required_argument, 0, 0 },
++                                            { "idr", required_argument, 0, 0 },
++                                            { "dynamic_bitrate", required_argument, 0, 0 },
++                                            { "dynamic_fps", required_argument, 0, 0 },
++                                            { "dynamic_keyint", required_argument, 0, 0 },
++                                            { "save", required_argument, 0, 0 },
++                                            { "help", no_argument, 0, 'h' },
++                                            { 0, 0, 0, 0 } };
++
++    int c = 0, option_index = 0;
++
++    /* Formerly, initialization of getopt depended on optind==0,
++    which causes problems with re-calling getopt as programs generally don't know that. */
++    optind = 0;
++
++    while ((c = getopt_long(argc, argv, optstr, long_options, &option_index)) != -1) {
++        switch (c) {
++        case 0:
++            if (optarg && strcmp(long_options[option_index].name, "vast_params") == 0) {
++                input_params->vast_params = optarg;
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "pix_fmt") == 0) {
++                input_params->pixel_format = optarg;
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "loop") == 0) {
++                input_params->loop = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "vfr") == 0) {
++                input_params->vfr_fps = atof(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "crf") == 0) {
++                input_params->crf = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "reset") == 0) {
++                input_params->enable_reset_resolution = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "reset_input") == 0) {
++                input_params->reset_input = optarg;
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "reset_size") == 0) {
++                input_params->reset_video_size = optarg;
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "reset_num") == 0) {
++                input_params->reset_frame_num = atof(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "roi") == 0) {
++                input_params->enable_roi = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "sei") == 0) {
++                input_params->enable_sei = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "idr") == 0) {
++                input_params->enable_idr = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "dynamic_bitrate") == 0) {
++                input_params->enable_dynamic_bitrate = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "dynamic_fps") == 0) {
++                input_params->enable_dynamic_fps = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "dynamic_keyint") == 0) {
++                input_params->enable_dynamic_keyint = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            } else if (optarg && strcmp(long_options[option_index].name, "save") == 0) {
++                input_params->save = atoi(optarg);
++                printf("========= %s with args %s\n", long_options[option_index].name, optarg);
++            }
++
++            break;
++        case 'i':
++            input_params->input = optarg;
++            printf("========= %c with args %s\n", c, input_params->input);
++            break;
++        case 'o':
++            input_params->output = optarg;
++            printf("========= %c with args %s\n", c, input_params->output);
++            break;
++        case 'r':
++            input_params->render = optarg;
++            printf("========= %c with args %s\n", c, input_params->render);
++            break;
++        case 'f':
++            input_params->fps        = atof(optarg);
++            input_params->frame_rate = av_d2q(input_params->fps, 4096);
++            printf("========= %c with args %f %d\n", c, input_params->fps, input_params->frame_rate.num);
++            break;
++        case 'b':
++            input_params->bitrate = atoi(optarg);
++            printf("========= %c with args %d\n", c, input_params->bitrate);
++            break;
++        case 's':
++            input_params->video_size = optarg;
++            printf("========= %c with args %s\n", c, input_params->video_size);
++            break;
++        case 'e':
++            input_params->encoder = optarg;
++            printf("========= %c with args %s\n", c, input_params->encoder);
++            break;
++        case 'p':
++            input_params->profile = optarg;
++            printf("========= %c with args %s\n", c, input_params->profile);
++            break;
++        case 'l':
++            input_params->level = atof(optarg);
++            printf("========= %c with args %f\n", c, input_params->level);
++            break;
++        case 't':
++            input_params->thread_num = atoi(optarg);
++            printf("========= %c with args %d\n", c, input_params->thread_num);
++            break;
++        case 'n':
++            input_params->frame_cnt = atoi(optarg);
++            printf("========= %c with args %d\n", c, input_params->frame_cnt);
++            break;
++        case 'c':
++            input_params->count = atoi(optarg);
++            printf("========= %c with args %s\n", c, optarg);
++            break;
++        case 'd':
++            av_log_set_level(AV_LOG_DEBUG);
++            printf("========= %c enable debug log\n", c);
++            break;
++        case 'h':
++            usage(argv[0]);
++            return -1;
++        case '?':
++        default:
++            printf("  unsupported option %c\n", c);
++            usage(argv[0]);
++            return -1;
++        }
++    }
++
++    if (optind < argc) {
++        usage(argv[0]);
++        return -1;
++    }
++
++    return 0;
++}
++
++static void set_default_params(struct option_t *input_params)
++{
++    input_params->input                   = "/video-case/video_xiaoling/test_filter/test_yuv420p_1280x720_25.yuv";
++    input_params->output                  = "/home/xiaoling/video/out.h264";
++    input_params->render                  = NULL;
++    input_params->fps                     = 30.0;
++    input_params->frame_rate              = av_d2q(input_params->fps, 4096);
++    input_params->bitrate                 = 5000000;
++    input_params->encoder                 = "h264_vastapi";
++    input_params->video_size              = "1280x720";
++    input_params->pixel_format            = "yuv420p";
++    input_params->vast_params             = NULL;
++    input_params->profile                 = NULL;
++    input_params->level                   = 0.0;
++    input_params->thread_num              = 1;
++    input_params->frame_cnt               = -1;
++    input_params->loop                    = 0;
++    input_params->count                   = 1;
++    input_params->save                    = 1;
++    input_params->vfr_fps                 = 0;
++    input_params->enable_roi              = 0;
++    input_params->enable_sei              = 0;
++    input_params->enable_idr              = 0;
++    input_params->enable_dynamic_bitrate  = 0;
++    input_params->enable_dynamic_fps      = 0;
++    input_params->enable_dynamic_keyint   = 0;
++    input_params->crf                     = 0;
++    input_params->enable_reset_resolution = 0;
++    input_params->reset_input             = "/video-case/video4.3/jctvc/ParkScene_1920x1080_24.yuv";
++    input_params->reset_video_size        = "1920x1080";
++    input_params->reset_frame_num         = 200;
++}
++
++int main(int argc, char **argv)
++{
++    int             ret          = 0;
++    struct option_t input_params = { 0 };
++
++    set_default_params(&input_params);
++
++    if ((ret = parse_options(argc, argv, &input_params)) < 0) {
++        printf("parse_options failed\n");
++        return ret;
++    }
++
++    int count = input_params.count;
++
++    while (!ret && count) {
++        ret = transcode(&input_params);
++        count--;
++        printf("-------- remain count = %d, ret %d --------\n\n", count, ret);
++    }
++
++    return ret;
++}
+diff --git a/ffbuild/version.sh b/ffbuild/version.sh
+index edc4dd3..e0b5904 100755
+--- a/ffbuild/version.sh
++++ b/ffbuild/version.sh
+@@ -7,7 +7,7 @@ if ! test "$revision"; then
+     if (cd "$1" && grep git RELEASE 2> /dev/null >/dev/null) ; then
+         revision=$(cd "$1" && git describe --tags --match N 2> /dev/null)
+     else
+-        revision=$(cd "$1" && git describe --tags --always 2> /dev/null)
++        revision=$(cd "$1" && git describe --tags --always --long 2> /dev/null)
+     fi
+ fi
+ 
 diff --git a/fftools/ffmpeg.c b/fftools/ffmpeg.c
 old mode 100644
 new mode 100755
@@ -4540,10 +6430,10 @@ old mode 100644
 new mode 100755
 diff --git a/libavcodec/vastapi_decode.c b/libavcodec/vastapi_decode.c
 new file mode 100644
-index 0000000..3266edc
+index 0000000..0936908
 --- /dev/null
 +++ b/libavcodec/vastapi_decode.c
-@@ -0,0 +1,498 @@
+@@ -0,0 +1,499 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -5038,7 +6928,8 @@ index 0000000..3266edc
 +    VASTAPIDecodeContext *ctx  = avctx->internal->hwaccel_priv_data;
 +    VastapiFunctions     *func = (VastapiFunctions *)ctx->decCtx.vst_func;
 +
-+    func->vastapiDecUnint(&ctx->decCtx);
++    if(func != NULL)
++        func->vastapiDecUnint(&ctx->decCtx);
 +
 +    return 0;
 +}
@@ -5112,11 +7003,11 @@ index 0000000..a813187
 +
 +#endif /* AVCODEC_VASTAPI_DECODE_H */
 diff --git a/libavcodec/vastapi_encode.c b/libavcodec/vastapi_encode.c
-new file mode 100644
-index 0000000..58c5d8a
+new file mode 100755
+index 0000000..fcd0318
 --- /dev/null
 +++ b/libavcodec/vastapi_encode.c
-@@ -0,0 +1,4713 @@
+@@ -0,0 +1,4645 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -5960,34 +7851,10 @@ index 0000000..58c5d8a
 +
 +    if (frame) {
 +        int64_t pkt_duration = 0;
-+        av_log(avctx, AV_LOG_DEBUG, "Input frame: %ux%u (%" PRId64 ").%d\n", frame->width, frame->height, frame->pts,
-+               frame->pkt_duration);
-+
-+        if (ctx->input_order == 0) {
-+            if (!frame->time_base.den || !frame->time_base.num) {
-+                ctx->vast_param->in_tbn = av_q2d(avctx->framerate);
-+            } else {
-+                ctx->vast_param->in_tbn = 1 / av_q2d(frame->time_base);
-+            }
-+        }
-+        av_log(avctx, AV_LOG_DEBUG, "input tbn:%d,frame time_base=%d/%d,avctx time_base=%d/%d\n",
-+               ctx->vast_param->in_tbn, frame->time_base.den, frame->time_base.num, avctx->time_base.den,
-+               avctx->time_base.num);
-+
-+        if (ctx->vast_param->vfr) {
-+            if (avctx->time_base.den) {
-+                if (ctx->input_order)
-+                    pkt_duration =
-+                        (frame->pts - ctx->pic_end->pts) *
-+                        ((double)ctx->vast_param->in_tbn * (double)avctx->time_base.num / (double)avctx->time_base.den);
-+                else
-+                    pkt_duration = abs(frame->pts) * ((double)ctx->vast_param->in_tbn * (double)avctx->time_base.num /
-+                                                      (double)avctx->time_base.den);
-+            } else {
-+                pkt_duration = 0;
-+            }
-+            av_log(avctx, AV_LOG_DEBUG, "no input frame->pkt_duration=%d\n", pkt_duration);
-+        }
++        av_log(avctx, AV_LOG_DEBUG, "Input frame: %ux%u (%" PRId64 ").%d type %d\n", frame->width, frame->height, frame->pts,
++               frame->pkt_duration,frame->pict_type);
++        
++        pkt_duration = func->vastapiEncCalDurPar(ctx, frame->time_base, frame->pts);
 +
 +        err = vastapi_encode_check_frame(avctx, frame);
 +        if (err < 0)
@@ -6047,63 +7914,8 @@ index 0000000..58c5d8a
 +#else
 +        av_frame_move_ref(pic->input_image, frame);
 +#endif
-+
-+        if (ctx->vast_param->vfr) {
-+            if (pkt_duration == 0) {
-+                pic->timebaseNum = avctx->time_base.den; // AVCodecContext->time_base is 1/framerate
-+                pic->timebaseDen = avctx->time_base.num;
-+                av_log(avctx, AV_LOG_DEBUG, "pkt_duration is 0 set pic->timebase=%d-%d\n", pic->timebaseDen,
-+                       pic->timebaseNum);
-+            } else {
-+                av_reduce(&pic->timebaseNum, &pic->timebaseDen, ctx->vast_param->in_tbn, pkt_duration, 65535);
-+            }
-+        }
-+
-+        int32_t delayGop;
-+        if (ctx->vast_param->adaptiveGOPEn) {
-+            delayGop = av_log2(MAX_ADAPTIVE_GOP_SIZE);
-+        } else {
-+            delayGop = av_log2(ctx->vast_param->brc.gop_size);
-+        }
-+        int delay1pass = MAX_CORE_NUM - 1;
-+        int delay2pass = CUTREE_BUFFER_CNT(ctx->vast_param->lookaheadDepth, ctx->gop_size);
-+        // if (ctx->vast_param->brc.gop_size > 0 && ctx->vast_param->brc.gop_size <= 8 && ctx->vast_param->multimode !=
-+        // VA_MULTI_CORE_MODE)
-+        //     delay2pass = ctx->vast_param->lookaheadDepth + ctx->vast_param->brc.gop_size; // ndelay value in vemcu
-+        //     should also be modified
-+        if (ctx->vast_param->multimode == VA_MULTI_CORE_MODE) {
-+        } else if (ctx->vast_param->brc.gop_size > 0 && ctx->vast_param->brc.gop_size <= 8) {
-+            delay2pass = MAX(ctx->vast_param->brc.gop_size + 1,
-+                             ctx->vast_param->lookaheadDepth); // ndelay value in vemcu should also be modified
-+        } else if (ctx->vast_param->brc.gop_size == 0) {
-+            delay2pass = MAX(5, ctx->vast_param->lookaheadDepth); // ndelay value in vemcu should also be modified
-+        }
-+
-+        if (ctx->input_order == 0)
-+            ctx->first_pts = pic->pts;
-+        if (ctx->input_order == delayGop)
-+            ctx->dts_pts_diff = pic->pts - ctx->first_pts;
-+
-+        if (ctx->input_order == 1) {
-+            ctx->dts_pts_scale = pic->pts - ctx->first_pts;
-+        }
-+        if (!ctx->dts_pts_scale)
-+            ctx->dts_pts_scale = 1;
-+        av_log(avctx, AV_LOG_DEBUG, "ctx->dts_pts_scale=%d,ctx->dts_pts_diff=%d\n", ctx->dts_pts_scale,
-+               ctx->dts_pts_diff);
-+
-+        if (delayGop > 0) {
-+            if (ctx->vast_param->multimode == VA_MULTI_CORE_MODE &&
-+                !((avctx->width * avctx->height < 256 * 256 * 2 * 2 && ctx->vast_param->lookaheadDepth > 0) ||
-+                  (avctx->width * avctx->height < 256 * 256 && ctx->vast_param->lookaheadDepth == 0))) {
-+                ctx->ts_ring[ctx->input_order % (3 * (delay2pass + delay1pass))] = pic->pts;
-+            } else {
-+                if (ctx->vast_param->lookaheadDepth > 0)
-+                    ctx->ts_ring[ctx->input_order % (3 * delay2pass)] = pic->pts;
-+                else
-+                    ctx->ts_ring[ctx->input_order % (3 * MAX_ADAPTIVE_GOP_SIZE)] = pic->pts;
-+            }
-+        }
++        
++        func->vastapiEncCalTimeStampPar(ctx, pic, pkt_duration);
 +
 +        pic->display_order = ctx->input_order;
 +        ++ctx->input_order;
@@ -6414,7 +8226,8 @@ index 0000000..58c5d8a
 +    ctx->av_packet_unref                      = vaenc_av_packet_unref;
 +    ctx->update_av1_pkt                       = vaenc_update_av1_pkt;
 +    ctx->ffmpeg_av_freep                      = vaenc_ffmpeg_av_freep;
-+    ctx->pframe_number                        = avctx->frame_number;
++    ctx->ff_av_log                            = av_log;
++    ctx->pframe_number                        = &avctx->frame_number;
 +    ctx->avctx                                = avctx;
 +#if FF_GE(N441)
 +    ctx->ff_version = 2;
@@ -6589,6 +8402,8 @@ index 0000000..58c5d8a
 +    if (err < 0)
 +        goto fail;
 +
++    ctx->rate_emu = ctx->vast_param->lkLatency;
++
 +#if FF_LT(N441)
 +    ctx->rate_emu = 0;
 +#else
@@ -6596,8 +8411,6 @@ index 0000000..58c5d8a
 +        ctx->vast_param->multimode != VA_SINGLE_CORE_MODE || ctx->vast_param->lookaheadDepth == 0 ||
 +        ctx->vast_param->openGop)
 +        ctx->rate_emu = 0;
-+    else
-+        ctx->rate_emu = 1;
 +#endif
 +
 +    err = vastapi_encode_create_recon_frames(avctx);
@@ -6687,7 +8500,7 @@ index 0000000..58c5d8a
 +    }
 +
 +    if (/*ctx->va_packed_headers & VAST_ENC_PACKED_HEADER_SEQUENCE &&*/
-+        ctx->codec->write_sequence_header && avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER) {
++        ctx->codec->write_sequence_header && (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)) {
 +        char   data[MAX_PARAM_BUFFER_SIZE];
 +        size_t bit_len = 8 * sizeof(data);
 +
@@ -8200,7 +10013,9 @@ index 0000000..58c5d8a
 +        ptl->general_profile_compatibility_flag[1] = bit_depth == 8;
 +        ptl->general_profile_compatibility_flag[2] = bit_depth <= 10;
 +    }
-+    ptl->general_profile_compatibility_flag[4] = 1;
++    
++    if(ptl->general_profile_idc == 4) 
++        ptl->general_profile_compatibility_flag[4] = 1;
 +
 +    ptl->general_progressive_source_flag    = 1;
 +    ptl->general_interlaced_source_flag     = 0;
@@ -8267,8 +10082,9 @@ index 0000000..58c5d8a
 +    sps->chroma_format_idc          = chroma_format;
 +    sps->separate_colour_plane_flag = 0;
 +
-+    sps->pic_width_in_luma_samples  = ctx->surface_width;
-+    sps->pic_height_in_luma_samples = ctx->surface_height;
++    int min_cu_size = 8;
++    sps->pic_width_in_luma_samples = FFALIGN(avctx->width, min_cu_size);
++    sps->pic_height_in_luma_samples = FFALIGN(avctx->height, min_cu_size);
 +
 +    if (avctx->width != ctx->surface_width || avctx->height != ctx->surface_height) {
 +        sps->conformance_window_flag = 1;
@@ -8298,13 +10114,13 @@ index 0000000..58c5d8a
 +    // driver.
 +    // CTB size from 8x8 to 32x32.
 +    sps->log2_min_luma_coding_block_size_minus3   = 0;
-+    sps->log2_diff_max_min_luma_coding_block_size = 2;
++    sps->log2_diff_max_min_luma_coding_block_size = 3;
 +    // Transform size from 4x4 to 32x32.
 +    sps->log2_min_luma_transform_block_size_minus2   = 0;
 +    sps->log2_diff_max_min_luma_transform_block_size = 3;
 +    // Full transform hierarchy allowed (2-5).
 +    sps->max_transform_hierarchy_depth_inter = 3;
-+    sps->max_transform_hierarchy_depth_intra = 3;
++    sps->max_transform_hierarchy_depth_intra = 2;
 +    // AMP works.
 +    sps->amp_enabled_flag = 1;
 +    // SAO and temporal MVP do not work.
@@ -9163,7 +10979,11 @@ index 0000000..58c5d8a
 +    if (seq->seq_force_screen_content_tools == 0)
 +        seq->seq_force_integer_mv = AV1_SELECT_INTEGER_MV;
 +
-+    if (((ctx->vast_param->bitDepthLuma - 8) > 0) && (seq->seq_profile == 2)) // SW_PROFILE_2
++    if (ctx->vast_param->bitDepthLuma == DEFAULT_VAST)
++    {
++        seq->color_config.high_bitdepth = 0;
++    }
++    else if (((ctx->vast_param->bitDepthLuma - 8) > 0) && (seq->seq_profile == 2)) // SW_PROFILE_2
 +    {
 +        seq->color_config.high_bitdepth = 1;
 +        if ((ctx->vast_param->bitDepthLuma - 8) == 12)
@@ -9301,6 +11121,9 @@ index 0000000..58c5d8a
 +    // but there isn't any reason to do so - the one usable driver (i965)
 +    // can write its own headers and there is no metadata to include.
 +    ctx->desired_packed_headers = 0;
++
++    priv->profile = 0; // vast default FF_PROFILE_AV1_MAIN
++    priv->level = 13;  // vast default 5.1
 +
 +    if (avctx->profile == FF_PROFILE_UNKNOWN)
 +        avctx->profile = priv->profile;
@@ -12220,10 +14043,10 @@ index 0000000..b5b6cb3
 +#endif /* AVFILTER_VASTAPI_VPP_H */
 diff --git a/libavfilter/vf_misc_vastapi.c b/libavfilter/vf_misc_vastapi.c
 new file mode 100644
-index 0000000..b41240b
+index 0000000..5f42baf
 --- /dev/null
 +++ b/libavfilter/vf_misc_vastapi.c
-@@ -0,0 +1,636 @@
+@@ -0,0 +1,791 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -12249,7 +14072,7 @@ index 0000000..b41240b
 +#include "libavutil/pixdesc.h"
 +#include "libavutil/avstring.h"
 +#include "libavfilter/filters.h"
-+
++#include "libavutil/eval.h"
 +#include "avfilter.h"
 +#include "formats.h"
 +#include "internal.h"
@@ -12279,6 +14102,63 @@ index 0000000..b41240b
 +#define MISC_PARAM_BAD_NAME (-1)
 +#define MISC_PARAM_BAD_VALUE (-2)
 +
++static const char *const var_names[] = {
++   "in_w",   "iw",
++    "in_h",   "ih",
++    "out_w",  "ow",
++    "out_h",  "oh",
++    "a",
++    "sar",
++    "dar",
++    "hsub",
++    "vsub",
++    "ohsub",
++    "ovsub",
++    "n",
++    "t",
++    "pos",
++    "main_w",
++    "main_h",
++    "main_a",
++    "main_sar",
++    "main_dar", "mdar",
++    "main_hsub",
++    "main_vsub",
++    "main_n",
++    "main_t",
++    "main_pos",
++    NULL
++};
++
++enum var_name {
++    VAR_IN_W,   VAR_IW,
++    VAR_IN_H,   VAR_IH,
++    VAR_OUT_W,  VAR_OW,
++    VAR_OUT_H,  VAR_OH,
++    VAR_A,
++    VAR_SAR,
++    VAR_DAR,
++    VAR_HSUB,
++    VAR_VSUB,
++    VAR_OHSUB,
++    VAR_OVSUB,
++    VAR_N,
++    VAR_T,
++    VAR_POS,
++    VAR_S2R_MAIN_W,
++    VAR_S2R_MAIN_H,
++    VAR_S2R_MAIN_A,
++    VAR_S2R_MAIN_SAR,
++    VAR_S2R_MAIN_DAR, VAR_S2R_MDAR,
++    VAR_S2R_MAIN_HSUB,
++    VAR_S2R_MAIN_VSUB,
++    VAR_S2R_MAIN_N,
++    VAR_S2R_MAIN_T,
++    VAR_S2R_MAIN_POS,
++    VARS_NB
++};
++
++
 +typedef struct MiscVASTAPIContext {
 +    VASTAPIVPPContext vpp_ctx; // must be the first field
 +    int               nb_inputs;
@@ -12293,7 +14173,7 @@ index 0000000..b41240b
 +    unsigned int is_enable;
 +    int          overlay_size;
 +    char        *overlay_data;
-+
++    double var_values[VARS_NB];
 +    // colorspac
 +} MiscVASTAPIContext;
 +
@@ -12339,6 +14219,88 @@ index 0000000..b41240b
 +    vastapi_nodev_free_functions(&func);
 +    return -1;
 +}
++
++static unsigned int eval_cmd_strings_prase(AVFilterLink *inlink,MiscVASTAPIContext *ctx, char *split)
++{
++    char *sub_string,*saveptr;
++    sub_string = av_strtok(ctx->vpp_ctx.vastfilter_params.filt_params->output_size, split,&saveptr);
++    const char *expr;
++    double res;
++    
++    int ret, w = 0, h = 0,factor_w = 1,factor_h = 1,scale_w,scale_h;
++    ctx->var_values[VAR_IN_W]  = ctx->var_values[VAR_IW] = inlink->w;
++    ctx->var_values[VAR_IN_H]  = ctx->var_values[VAR_IH] = inlink->h;
++    int index = 0, i = -1;
++
++    while (sub_string) {
++        if (index % 2 == 0) {
++            i++;
++            if ((ret = av_expr_parse_and_eval(&res, (expr = sub_string),
++                                var_names, ctx->var_values,
++                                NULL, NULL, NULL, NULL, NULL, 0, ctx)) < 0)
++            return AVERROR(EINVAL);
++            scale_w = res;
++            w = scale_w;
++            if (w < -1) {
++                factor_w = -w;
++            }
++            if (!(w = scale_w))
++                w = inlink->w;
++        } else {
++            if ((ret = av_expr_parse_and_eval(&res, (expr = sub_string),
++                                var_names, ctx->var_values,
++                                NULL, NULL, NULL, NULL, NULL, 0, ctx)) < 0)
++            return AVERROR(EINVAL);
++            scale_h = res;
++            h = scale_h;
++            if (h < -1) {
++                factor_h = -h;
++            }
++            if (!(h = scale_h))
++                h = inlink->h;
++        }
++        if(w != 0 && h != 0 ){
++            if (w < 0)
++                w = av_rescale(h, inlink->w, inlink->h * factor_w) * factor_w;
++
++            if (h < 0)
++                h = av_rescale(w, inlink->h, inlink->w * factor_h) * factor_h;
++
++            if (ctx->vpp_ctx.vastfilter_params.filt_params->force_original_aspect_ratio) {
++                int tmp_w = av_rescale(h, inlink->w, inlink->h);
++                int tmp_h = av_rescale(w, inlink->h, inlink->w);
++
++                if (ctx->vpp_ctx.vastfilter_params.filt_params->force_original_aspect_ratio == 1) {
++                    w = FFMIN(tmp_w, w);
++                    h = FFMIN(tmp_h, h);
++                } else {
++                    w = FFMAX(tmp_w, w);
++                    h = FFMAX(tmp_h, h);
++                }
++            }
++
++            if(h < 0 && w < 0){
++                w = inlink->w;
++                h = inlink->h;
++            }
++
++            ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height = h;
++            if (ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height % 2 != 0) {
++                ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height = ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].height & ~0x1;
++            }
++
++            ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width = w;
++            if (ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width % 2 != 0) {
++                ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width = ctx->vpp_ctx.vastfilter_params.filt_params->width_height_array[i].width & ~0x1;
++            }
++            w = 0, h = 0;
++        }
++        sub_string = av_strtok(NULL, split,&saveptr);
++        index++;
++    }
++    return i + 1;
++}
++
 +
 +static av_cold int misc_vastapi_init(AVFilterContext *avctx)
 +{
@@ -12490,6 +14452,16 @@ index 0000000..b41240b
 +        vctx->vastfilter_params.filt_params->width_height_array[0].width  = vctx->vastfilter_params.filt_params->height;
 +        vctx->vastfilter_params.filt_params->width_height_array[0].height = vctx->vastfilter_params.filt_params->width;
 +    }
++
++    if(strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"if(")
++     || strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"(") 
++     || strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"-1")){
++        if (eval_cmd_strings_prase(inlink,ctx,"x+") != ctx->vpp_ctx.vastfilter_params.filt_params->nb_outputs) {
++            av_log(ctx, AV_LOG_ERROR, "The input parameters outputs and output_size do not match .\n");
++            return -1;
++        }   
++    }
++
 +    for (i = 0; i < vctx->vastfilter_params.filt_params->nb_outputs; i++) {
 +        if (!vctx->vastfilter_params.filt_params->width_height_array[i].width) {
 +            vctx->vastfilter_params.filt_params->width_height_array[i].width = inlink->w;
@@ -12713,6 +14685,12 @@ index 0000000..b41240b
 +        ret = AVERROR(EINVAL);
 +        return ret;
 +    }
++
++    if(!overlay_frame){
++        ret = AVERROR(EINVAL);
++        return ret;
++    }
++
 +    if (overlay_frame->width % 2 == 1) {
 +        overlay_frame->width--;
 +    }
@@ -13194,10 +15172,10 @@ index 77dc47d..64906f3 100644
  #endif /* AVUTIL_HWCONTEXT_INTERNAL_H */
 diff --git a/libavutil/hwcontext_vastapi.c b/libavutil/hwcontext_vastapi.c
 new file mode 100644
-index 0000000..b1af4a0
+index 0000000..9e73762
 --- /dev/null
 +++ b/libavutil/hwcontext_vastapi.c
-@@ -0,0 +1,1161 @@
+@@ -0,0 +1,1189 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -13602,14 +15580,25 @@ index 0000000..b1af4a0
 +    AVVASTAPIDeviceContext *hwctx = hwfc->device_ctx->hwctx;
 +    VastapiFunctions       *func  = (VastapiFunctions *)hwctx->vst_func;
 +
-+    if (ctx->dma_transfer.inited)
-+        func->vastapiDestroyDmaHandle(hwctx->display, &ctx->dma_transfer);
++#ifdef VENC_INPUT_DMA
++    if (ctx->dma_transfer.inited){
++        if (ctx->dma_hack_enable) {
++            if(ctx->dma_transfer.dmabuff_viraddr){
++                free(ctx->dma_transfer.dmabuff_viraddr);
++                ctx->dma_transfer.dmabuff_viraddr = NULL;
++            }
++        } else {
++            func->vastapiDestroyDmaHandle(hwctx->display, &ctx->dma_transfer);
++        }
++    }
++
 +    if (ctx->pool_dmabuffer) {
 +        av_buffer_pool_uninit(&ctx->pool_dmabuffer);
 +        ctx->init_dmabuffer_pool_size = 0;
-+        ctx->number_dmabuffer         = 0;
-+        ctx->buffer_elem_size         = 0;
++        ctx->number_dmabuffer = 0;
++        ctx->buffer_elem_size = 0;
 +    }
++#endif
 +
 +    if (avfc->surface_ids)
 +        func->vastapiFreeMemory(avfc->surface_ids);
@@ -13899,12 +15888,19 @@ index 0000000..b1af4a0
 +
 +    map->width  = src->width;
 +    map->height = src->height;
-+
-+    err = func->vastapiDmaReadBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
-+                                  &ctx->dma_transfer);
-+    if (err) {
-+        av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
-+               ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++    if (ctx->dma_hack_enable) {
++        err = func->vastapiDeviceMemcpy(hwctx->display, (ctx->dma_transfer.device_id)>>24, ctx->dma_transfer.dmabuff_viraddr, ctx->dma_transfer.data_size, ctx->dma_transfer.bus_addr, 1, &ctx->dma_transfer);
++        if (err) {
++            av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by hack dma, err = %d, busaddr=0x%x, size=%d\n",
++                    err, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++        }
++    } else {
++        err = func->vastapiDmaReadBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
++                                    &ctx->dma_transfer);
++        if (err) {
++            av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
++                ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++        }
 +    }
 +
 +    err = av_frame_copy(dst, map);
@@ -14020,12 +16016,22 @@ index 0000000..b1af4a0
 +        }
 +        QueWriteDmaBufSg(channel, planes, dma_meta.bus_addr, dma_meta.die_id);
 +#else
-+        err = func->vastapiDmaWriteBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
-+                                       &ctx->dma_transfer);
-+        if (err) {
-+            av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
-+                   ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++        if (ctx->dma_hack_enable) {
++            err = func->vastapiDeviceMemcpy(hwctx->display, (ctx->dma_transfer.device_id)>>24, ctx->dma_transfer.dmabuff_viraddr, ctx->dma_transfer.data_size, ctx->dma_transfer.bus_addr, 0, &ctx->dma_transfer);
++            if (err) {
++                av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by hack dma, err = %d, busaddr=0x%x, size=%d\n",
++                     err, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++            }
++        } else {
++            err = func->vastapiDmaWriteBuf(hwctx->display, ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size,
++                                        &ctx->dma_transfer);
++            if (err) {
++                av_log(hwfc, AV_LOG_ERROR, "Failed to transfer yuv data by dma, err = %d, busaddr=0x%lx, size=%d\n", err,
++                    ctx->dma_transfer.bus_addr, ctx->dma_transfer.data_size);
++            }
 +        }
++
++
 +#endif
 +
 +    fail:
