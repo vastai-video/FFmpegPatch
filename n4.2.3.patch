@@ -2442,7 +2442,7 @@ index 0000000..7952454
 +}
 diff --git a/doc/examples/vastapi_transcode.c b/doc/examples/vastapi_transcode.c
 new file mode 100644
-index 0000000..93ddcb7
+index 0000000..38f987c
 --- /dev/null
 +++ b/doc/examples/vastapi_transcode.c
 @@ -0,0 +1,1719 @@
@@ -2881,7 +2881,7 @@ index 0000000..93ddcb7
 +    char    *cp                              = NULL;
 +    char    *fiename_out                     = input_params->output;
 +    char     fiename_out_prefix[MAX_STR_LEN] = { 0 };
-+    char     filename_out_chn[MAX_STR_LEN]   = { 0 };
++    static char filename_out_chn[MAX_STR_LEN] = { 0 };
 +
 +    if (input_params->save) {
 +        cp = strstr(fiename_out, ".");
@@ -7004,10 +7004,10 @@ index 0000000..a813187
 +#endif /* AVCODEC_VASTAPI_DECODE_H */
 diff --git a/libavcodec/vastapi_encode.c b/libavcodec/vastapi_encode.c
 new file mode 100755
-index 0000000..fcd0318
+index 0000000..6ef7f6b
 --- /dev/null
 +++ b/libavcodec/vastapi_encode.c
-@@ -0,0 +1,4645 @@
+@@ -0,0 +1,4885 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -7158,6 +7158,7 @@ index 0000000..fcd0318
 +
 +static int vastapi_encode_av1_split_and_combine(AVCodecContext *avctx, AVPacket *pkt);
 +static int vastapi_encode_issue(AVCodecContext *avctx, VASTAPIEncodePicture *pic);
++static int vastapi_encode_head_issue(AVCodecContext *avctx, VASTAPIEncodePicture *pic);
 +
 +static unsigned char *vaenc_get_encode_buffer(void *pkt, int size)
 +{
@@ -7585,6 +7586,204 @@ index 0000000..fcd0318
 +    return err;
 +}
 +
++static int vastapi_encode_head_issue(AVCodecContext *avctx, VASTAPIEncodePicture *pic)
++{
++    VASTAPIEncodeContext      *ctx     = avctx->priv_data;
++    VastapiFunctions          *func    = (VastapiFunctions *)ctx->vst_func;
++    VASTDisplay                display = AVVASTAPIDeviceContextPtr(ctx->hwctx)->display;
++    VASTAPIEncodeSlice        *slice;
++    VASTStatus                 vas;
++    int                        err, i;
++    char                       data[MAX_PARAM_BUFFER_SIZE];
++    size_t                     bit_len;
++    av_unused AVFrameSideData *sd;
++
++    pic->input_image = av_frame_alloc();
++    if (!pic->input_image) {
++        err = AVERROR(ENOMEM);
++        goto fail;
++    }
++
++    err = av_hwframe_get_buffer(ctx->input_frames_ref, pic->input_image, 0);
++    if (err < 0) {
++        err = AVERROR(ENOMEM);
++        goto fail;
++    }
++    pic->input_surface = (VASTSurfaceID)(uintptr_t)((AVFrame*)pic->input_image)->data[3];
++
++    av_log(avctx, AV_LOG_DEBUG, "Input surface is %#x.\n", pic->input_surface);
++
++    pic->output_buffer_ref = av_buffer_pool_get(ctx->output_buffer_pool);
++    if (!pic->output_buffer_ref) {
++        err = AVERROR(ENOMEM);
++        goto fail;
++    }
++    pic->output_buffer = (VASTBufferID)(uintptr_t)AVBufferRefPtr(pic->output_buffer_ref)->data;
++    av_log(avctx, AV_LOG_DEBUG, "Output buffer is %#x.\n", pic->output_buffer);
++    
++    int                nb_side_data = AVFramePtr(pic->input_image)->nb_side_data;
++    VaEncFrameSideData sd_list[MAX_SEI_COUNT];
++    
++    enum VaEncCodecID codec_id;
++    switch (avctx->codec_descriptor->id) {
++    case AV_CODEC_ID_H264:
++        codec_id = VAENC_CODEC_ID_H264;
++        break;
++    case AV_CODEC_ID_H265:
++        codec_id = VAENC_CODEC_ID_H265;
++        break;
++    default:
++        codec_id = VAENC_CODEC_ID_UNKOWN;
++        break;
++    }
++
++    err = func->vastapiEncIssuePrep(ctx, display, pic, sd_list, nb_side_data, 0, FF_LT(N500), avctx->frame_number,
++                                    avctx->width, avctx->height);
++    if (err != 0)
++        goto fail;
++
++    ///
++    VASTAPIEncodeParam *params = malloc((5 + ctx->nb_slices * 2) * sizeof(VASTAPIEncodeParam));
++    int                 index  = 0;
++
++    av_log(avctx, AV_LOG_DEBUG, "vast last frame=%d\n", ctx->vast_last_frame);
++
++    if (ctx->codec->init_picture_params) {
++        err = ctx->codec->init_picture_params(avctx, pic);
++        if (err < 0) {
++            av_log(avctx, AV_LOG_ERROR,
++                   "Failed to initialise picture "
++                   "parameters: %d.\n",
++                   err);
++            goto fail;
++        }
++
++        params[index++] = (VASTAPIEncodeParam){ VASTEncPictureParameterBufferType, pic->codec_picture_params,
++                                                ctx->codec->picture_params_size, 0 };
++    }
++
++    if (pic->nb_slices == 0)
++        pic->nb_slices = ctx->nb_slices;
++    if (pic->nb_slices > 0) {
++        int rounding;
++        if (!pic->encode_issued) {
++            pic->slices = av_calloc(pic->nb_slices, sizeof(*pic->slices));
++            if (!pic->slices) {
++                err = AVERROR(ENOMEM);
++                goto fail;
++            }
++        }
++
++        for (i = 0; i < pic->nb_slices; i++)
++            pic->slices[i].row_size = ctx->slice_size;
++
++        rounding = ctx->slice_block_rows - ctx->nb_slices * ctx->slice_size;
++        if (rounding > 0) {
++            // Place rounding error at top and bottom of frame.
++            av_assert0(rounding < pic->nb_slices);
++            // Some Intel drivers contain a bug where the encoder will fail
++            // if the last slice is smaller than the one before it.  Since
++            // that's straightforward to avoid here, just do so.
++            if (rounding <= 2) {
++                for (i = 0; i < rounding; i++)
++                    ++pic->slices[i].row_size;
++            } else {
++                for (i = 0; i < (rounding + 1) / 2; i++)
++                    ++pic->slices[pic->nb_slices - i - 1].row_size;
++                for (i = 0; i < rounding / 2; i++)
++                    ++pic->slices[i].row_size;
++            }
++        } else if (rounding < 0) {
++            // Remove rounding error from last slice only.
++            av_assert0(rounding < ctx->slice_size);
++            pic->slices[pic->nb_slices - 1].row_size += rounding;
++        }
++    }
++    for (i = 0; i < pic->nb_slices; i++) {
++        slice        = &pic->slices[i];
++        slice->index = i;
++        if (i == 0) {
++            slice->row_start   = 0;
++            slice->block_start = 0;
++        } else {
++            const VASTAPIEncodeSlice *prev = &pic->slices[i - 1];
++            slice->row_start               = prev->row_start + prev->row_size;
++            slice->block_start             = prev->block_start + prev->block_size;
++        }
++        slice->block_size = slice->row_size * ctx->slice_block_cols;
++
++        av_log(avctx, AV_LOG_DEBUG,
++               "Slice %d: %d-%d (%d rows), "
++               "%d-%d (%d blocks).\n",
++               i, slice->row_start, slice->row_start + slice->row_size - 1, slice->row_size, slice->block_start,
++               slice->block_start + slice->block_size - 1, slice->block_size);
++
++        if ((ctx->codec->slice_params_size > 0) && (pic->type != CODETYPE_FLUSH)) {
++            if (!pic->encode_issued) {
++                slice->codec_slice_params = av_mallocz(ctx->codec->slice_params_size);
++                if (!slice->codec_slice_params) {
++                    err = AVERROR(ENOMEM);
++                    goto fail;
++                }
++            }
++        }
++
++        if (ctx->codec->init_slice_params && !pic->encode_issued) {
++            err = ctx->codec->init_slice_params(avctx, pic, slice);
++            if (err < 0) {
++                av_log(avctx, AV_LOG_ERROR,
++                       "Failed to initialise slice "
++                       "parameters: %d.\n",
++                       err);
++                goto fail;
++            }
++        }
++
++        if (ctx->va_packed_headers & VAST_ENC_PACKED_HEADER_SLICE && ctx->codec->write_slice_header) {
++            bit_len = 8 * sizeof(data);
++            err     = ctx->codec->write_slice_header(avctx, pic, slice, data, &bit_len);
++            if (err < 0) {
++                av_log(avctx, AV_LOG_ERROR,
++                       "Failed to write per-slice "
++                       "header: %d.\n",
++                       err);
++                goto fail;
++            }
++            params[index++] = (VASTAPIEncodeParam){ ctx->codec->slice_header_type, data, bit_len, 1 };
++        }
++
++        if (ctx->codec->init_slice_params) {
++            params[index++] = (VASTAPIEncodeParam){ VASTEncSliceParameterBufferType, slice->codec_slice_params,
++                                                    ctx->codec->slice_params_size, 0 };
++        }
++    }
++
++skipinit:
++    err = func->vastapiEncHeadIssue(ctx, display, pic, sd_list, nb_side_data, avctx->width, avctx->height, codec_id,
++                                FF_GE(N441), params, index);
++    free(params);
++    if (err == 0)
++        return 0;
++
++fail:
++    for (i = 0; i < pic->nb_param_buffers; i++)
++        func->vastapiDestroyBuffer(display, pic->param_buffers[i]);
++    for (i = 0; i < pic->nb_slices; i++) {
++        if (pic->slices) {
++            av_freep(&pic->slices[i].priv_data);
++            av_freep(&pic->slices[i].codec_slice_params);
++        }
++    }
++
++    av_freep(&pic->codec_picture_params);
++    av_freep(&pic->param_buffers);
++    av_freep(&pic->slices);
++    av_freep(&pic->roi);
++    av_buffer_unref(&pic->output_buffer_ref);
++    pic->output_buffer = VAST_INVALID_ID;
++    return err;
++}
++
 +static int vastapi_encode_av1_split_and_combine(AVCodecContext *avctx, AVPacket *pkt)
 +{
 +    VASTAPIEncodeContext *ctx = avctx->priv_data;
@@ -7813,14 +8012,14 @@ index 0000000..fcd0318
 +    //            "frames ignored due to lack of API support.\n");
 +    //     ctx->crop_warned = 1;
 +    // }
-+    if (frame->crop_top || frame->crop_bottom || frame->crop_left || frame->crop_right) {
-+        int step_x                                    = 2;
-+        int step_y                                    = 2;
-+        ctx->vast_param->preprocess.cropping_offset_y = frame->crop_top / step_y;
-+        ctx->vast_param->preprocess.cropping_offset_x = frame->crop_left / step_x;
-+        ctx->vast_param->preprocess.cropped_height    = frame->height - frame->crop_top;
-+        ctx->vast_param->preprocess.cropped_width     = frame->width - frame->crop_bottom;
-+    }
++    // if (frame->crop_top || frame->crop_bottom || frame->crop_left || frame->crop_right) {
++    //     int step_x                                    = 2;
++    //     int step_y                                    = 2;
++    //     ctx->vast_param->preprocess.cropping_offset_y = frame->crop_top / step_y;
++    //     ctx->vast_param->preprocess.cropping_offset_x = frame->crop_left / step_x;
++    //     ctx->vast_param->preprocess.cropped_height    = frame->height - frame->crop_top;
++    //     ctx->vast_param->preprocess.cropped_width     = frame->width - frame->crop_bottom;
++    // }
 +    if (!ctx->roi_allowed) {
 +        AVFrameSideData *sd = av_frame_get_side_data(frame, AV_FRAME_DATA_REGIONS_OF_INTEREST);
 +
@@ -8269,9 +8468,13 @@ index 0000000..fcd0318
 +{
 +    VASTAPIEncodeContext *ctx     = avctx->priv_data;
 +    VastapiFunctions     *func    = (VastapiFunctions *)ctx->vst_func;
-+    VASTDisplay           display = AVVASTAPIDeviceContextPtr(ctx->hwctx)->display;
++    VASTDisplay           display = NULL;
 +    VASTAPIEncodePicture *pic, *next;
 +
++    if(!ctx->hwctx){
++        return AVERROR(EINVAL);
++    }
++    display = AVVASTAPIDeviceContextPtr(ctx->hwctx)->display;
 +    if (avctx->codec_id == AV_CODEC_ID_AV1) // av1mp4
 +        av_free(ctx->av1pkg);
 +
@@ -8499,29 +8702,66 @@ index 0000000..fcd0318
 +        }
 +    }
 +
-+    if (/*ctx->va_packed_headers & VAST_ENC_PACKED_HEADER_SEQUENCE &&*/
-+        ctx->codec->write_sequence_header && (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)) {
-+        char   data[MAX_PARAM_BUFFER_SIZE];
-+        size_t bit_len = 8 * sizeof(data);
++    if (avctx->codec_id == AV_CODEC_ID_AV1 /*|| ctx->vast_param->multimode != VA_SINGLE_CORE_MODE*/){
++        if (/*ctx->va_packed_headers & VAST_ENC_PACKED_HEADER_SEQUENCE &&*/
++            ctx->codec->write_sequence_header && (avctx->flags & AV_CODEC_FLAG_GLOBAL_HEADER)) {
++            char   data[MAX_PARAM_BUFFER_SIZE];
++            size_t bit_len = 8 * sizeof(data);
 +
-+        err = ctx->codec->write_sequence_header(avctx, data, &bit_len);
++            err = ctx->codec->write_sequence_header(avctx, data, &bit_len);
++            if (err < 0) {
++                av_log(avctx, AV_LOG_ERROR,
++                    "Failed to write sequence header "
++                    "for extradata: %d.\n",
++                    err);
++                goto fail;
++            } else {
++                avctx->extradata_size = (bit_len + 7) / 8;
++                avctx->extradata      = av_mallocz(avctx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
++                if (!avctx->extradata) {
++                    err = AVERROR(ENOMEM);
++                    goto fail;
++                }
++                memcpy(avctx->extradata, data, avctx->extradata_size);
++            }
++        }
++    }else if(avctx->codec_id != AV_CODEC_ID_MJPEG){//global head
++        char data[MAX_PARAM_BUFFER_SIZE];
++        size_t len = sizeof(data);
++        VASTAPIEncodePicture *pic;
++
++        pic = vastapi_encode_alloc(avctx);//head temp pic
++        if (!pic)
++            return AVERROR(ENOMEM);
++
++        err = vastapi_encode_head_issue(avctx, pic);
 +        if (err < 0) {
-+            av_log(avctx, AV_LOG_ERROR,
-+                   "Failed to write sequence header "
-+                   "for extradata: %d.\n",
-+                   err);
++            av_log(avctx, AV_LOG_ERROR, "Encode head issue failed: %d.\n", err);
++        }
++
++        // err = vastapi_encode_output_head(avctx, pic, data, &len);
++        err = func->vastapiEncHeadOutput(ctx, pic, data, &len);
++        if (err < 0) {
++            av_log(avctx, AV_LOG_ERROR, "Output failed: %d.\n", err);
++        }
++
++        if (err < 0) {
++            av_log(avctx, AV_LOG_ERROR, "Encode head out failed: %d.\n", err);
 +            goto fail;
-+        } else {
-+            avctx->extradata_size = (bit_len + 7) / 8;
-+            avctx->extradata      = av_mallocz(avctx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
++        } else{
++            avctx->extradata_size = len;
++            avctx->extradata = av_mallocz(avctx->extradata_size +
++                                        AV_INPUT_BUFFER_PADDING_SIZE);
 +            if (!avctx->extradata) {
 +                err = AVERROR(ENOMEM);
 +                goto fail;
 +            }
++            av_log(avctx, AV_LOG_DEBUG, "will cp head size %ld\n",len);
 +            memcpy(avctx->extradata, data, avctx->extradata_size);
 +        }
-+    }
 +
++        func->vastapiEncFreeHead(ctx, pic);
++    }
 +    return 0;
 +fail:
 +    return err;
@@ -14043,10 +14283,10 @@ index 0000000..b5b6cb3
 +#endif /* AVFILTER_VASTAPI_VPP_H */
 diff --git a/libavfilter/vf_misc_vastapi.c b/libavfilter/vf_misc_vastapi.c
 new file mode 100644
-index 0000000..5f42baf
+index 0000000..1cfe05b
 --- /dev/null
 +++ b/libavfilter/vf_misc_vastapi.c
-@@ -0,0 +1,791 @@
+@@ -0,0 +1,796 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -14503,9 +14743,14 @@ index 0000000..5f42baf
 +    err = ff_vastapi_vpp_config_output(outlink);
 +    if (err < 0)
 +        return err;
-+    if (inlink->sample_aspect_ratio.num)
-+        outlink->sample_aspect_ratio =
-+            av_mul_q((AVRational){ outlink->h * inlink->w, outlink->w * inlink->h }, inlink->sample_aspect_ratio);
++    if (inlink->sample_aspect_ratio.num){
++        if((vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterRotate && 
++            vpp_ctx->vastfilter_params.filt_params->rotate_degree != 180 && vpp_ctx->vastfilter_params.filt_params->rotate_degree != -180)
++            || vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterTranspose)
++            outlink->sample_aspect_ratio = av_div_q((AVRational) { 1, 1 }, inlink->sample_aspect_ratio);
++        else
++            outlink->sample_aspect_ratio = av_mul_q((AVRational){outlink->h * inlink->w, outlink->w * inlink->h}, inlink->sample_aspect_ratio);
++    }
 +    else
 +        outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
 +
@@ -14878,7 +15123,7 @@ index 8a7a44e..4272870 100644
  SKIPHEADERS-$(CONFIG_VDPAU)            += hwcontext_vdpau.h
  
 diff --git a/libavutil/cpu.c b/libavutil/cpu.c
-index 6548cc3..daa4119 100644
+index 6548cc3..029acfa 100644
 --- a/libavutil/cpu.c
 +++ b/libavutil/cpu.c
 @@ -269,6 +269,11 @@ int av_cpu_count(void)
@@ -14886,7 +15131,7 @@ index 6548cc3..daa4119 100644
  
      int nb_cpus = 1;
 +
-+#ifdef ANDROID
++#if defined ANDROID || defined ANDROID_32BIT
 +    return nb_cpus;
 +#endif
 +
@@ -15172,10 +15417,10 @@ index 77dc47d..64906f3 100644
  #endif /* AVUTIL_HWCONTEXT_INTERNAL_H */
 diff --git a/libavutil/hwcontext_vastapi.c b/libavutil/hwcontext_vastapi.c
 new file mode 100644
-index 0000000..9e73762
+index 0000000..9648972
 --- /dev/null
 +++ b/libavutil/hwcontext_vastapi.c
-@@ -0,0 +1,1189 @@
+@@ -0,0 +1,1192 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -15347,6 +15592,9 @@ index 0000000..9e73762
 +    VASTAPIDeviceContext   *ctx   = hwdev->internal->priv;
 +    AVVASTAPIDeviceContext *hwctx = hwdev->hwctx;
 +    VastapiFunctions       *func  = (VastapiFunctions *)hwctx->vst_func;
++    if(!func){
++        return;
++    }
 +
 +    if (ctx->formats)
 +        func->vastapiFreeMemory(ctx->formats);
@@ -15354,7 +15602,7 @@ index 0000000..9e73762
 +
 +    func->vastapiHwDeviceFree(hwctx, hwdev->user_opaque);
 +
-+    vastapi_free_functions(&func);
++    vastapi_free_functions((VastapiFunctions **)&hwctx->vst_func);
 +}
 +
 +static AVBufferRef *vastapi_pool_alloc(void *opaque, int size)
@@ -16119,7 +16367,7 @@ index 0000000..9e73762
 +
 +    user_opaque = func->vastapiHwDeviceCreate(hwctx, device);
 +    if (!user_opaque) {
-+        vastapi_free_functions(&func);
++        vastapi_free_functions((VastapiFunctions **)&hwctx->vst_func);
 +        return AVERROR(ENOMEM);
 +    }
 +
