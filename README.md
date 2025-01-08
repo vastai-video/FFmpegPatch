@@ -62,7 +62,7 @@ cd -
 # build for arm64
 cd ffmpeg
 ./configure --arch=arm64 --enable-shared --disable-static --enable-gpl --enable-nonfree \
-	--enable-vastapi --extra-cflags=-I${VASTAI_STREAM_INSTALL}/include \
+	--enable-vastapi --extra-cflags=-I${VASTAI_STREAM_INSTALL}/include --extra-ldflags=-ldl \
 	--prefix=${VASTAI_STREAM_INSTALL}/ffmpeg
 make -j $(nproc)
 make install
