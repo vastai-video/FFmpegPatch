@@ -17,9 +17,9 @@ index 4f5353f..5c0d9d4 100755
 +    vastapi_downscale_example
 +    vastapi_transcode_example
 +    vastapi_varres_transcode_example
-+    vastapi_10bit_encode_example
++    vastapi_10bit_encode_example    
  "
-
+ 
  EXTERNAL_AUTODETECT_LIBRARY_LIST="
 @@ -1993,6 +1998,7 @@ HWACCEL_AUTODETECT_LIBRARY_LIST="
      nvdec
@@ -45,7 +45,7 @@ index 4f5353f..5c0d9d4 100755
 +hevc_vastapi_hwaccel_deps="vastapi"
 +av1_vastapi_hwaccel_deps="vastapi"
 +mjpeg_vastapi_hwaccel_deps="vastapi"
-
+ 
  # hardware-accelerated codecs
 +vastapi_encode_deps="vastapi"
 +h264_vastapi_encoder_select="vastapi_encode"
@@ -57,7 +57,7 @@ index 4f5353f..5c0d9d4 100755
  omx_rpi_select="omx"
 @@ -3780,6 +3796,7 @@ libzmq_protocol_deps="libzmq"
  libzmq_protocol_select="network"
-
+ 
  # filters
 +misc_vastapi_filter_deps="vastapi"
  ametadata_filter_deps="avformat"
@@ -65,7 +65,7 @@ index 4f5353f..5c0d9d4 100755
  aresample_filter_deps="swresample"
 @@ -3948,6 +3965,10 @@ xstack_qsv_filter_deps="libmfx"
  xstack_qsv_filter_select="qsvvpp"
-
+ 
  # examples
 +vastapi_downscale_example_deps="vastapi"
 +vastapi_transcode_example_deps="avcodec avformat avutil h264_vastapi_encoder"
@@ -86,7 +86,7 @@ index 4efed6b..7062b15 100644
 +EXAMPLES-$(CONFIG_VASTAPI_TRANSCODE_EXAMPLE) += vastapi_transcode
 +EXAMPLES-$(CONFIG_VASTAPI_VARRES_TRANSCODE_EXAMPLE) += vastapi_varres_transcode
 +EXAMPLES-$(CONFIG_VASTAPI_10BIT_ENCODE_EXAMPLE) += vastapi_10bit_encode
-
+ 
  EXAMPLES       := $(EXAMPLES-yes:%=doc/examples/%$(PROGSSUF)$(EXESUF))
  EXAMPLES_G     := $(EXAMPLES-yes:%=doc/examples/%$(PROGSSUF)_g$(EXESUF))
 diff --git a/doc/examples/vastapi_10bit_encode.c b/doc/examples/vastapi_10bit_encode.c
@@ -714,10 +714,10 @@ index 0000000..8117260
 +-s                     码流尺寸
 diff --git a/doc/examples/vastapi_downscale.c b/doc/examples/vastapi_downscale.c
 new file mode 100644
-index 0000000..350c6c3
+index 0000000..be63199
 --- /dev/null
 +++ b/doc/examples/vastapi_downscale.c
-@@ -0,0 +1,1574 @@
+@@ -0,0 +1,1584 @@
 +/*
 + * Copyright (c) 2010 Nicolas George
 + * Copyright (c) 2011 Stefano Sabatini
@@ -1216,6 +1216,11 @@ index 0000000..350c6c3
 +        ret = AVERROR(ENOMEM);
 +        return ret;
 +    }
++    AVBufferSrcParameters *par = av_buffersrc_parameters_alloc();
++    if (!par)
++        return AVERROR(ENOMEM);
++    memset(par, 0, sizeof(*par));
++    par->format = AV_PIX_FMT_NONE;
 +
 +    buffersrc  = avfilter_get_by_name("buffer");
 +    buffersink = avfilter_get_by_name("buffersink");
@@ -1234,7 +1239,12 @@ index 0000000..350c6c3
 +        av_log(NULL, AV_LOG_ERROR, "Cannot create buffer source\n");
 +        goto end;
 +    }
-+
++    
++    par->hw_frames_ctx = dec_ctx->hw_frames_ctx;
++    ret = av_buffersrc_parameters_set(buffersrc_ctx, par);
++    if (ret < 0)
++        goto end;
++    av_freep(&par);
 +    if ((ret = avfilter_graph_parse2(filter_graph, filter_spec, &inputs, &outputs)) < 0) {
 +        av_log(NULL, AV_LOG_ERROR, "avfilter_graph_parse2 failed\n");
 +        goto end;
@@ -1245,11 +1255,11 @@ index 0000000..350c6c3
 +        return ret;
 +    }
 +
-+    inputs->filter_ctx->inputs[0]->hw_frames_ctx = av_buffer_ref(dec_ctx->hw_frames_ctx);
-+    if (!inputs->filter_ctx->inputs[0]->hw_frames_ctx) {
-+        av_log(NULL, AV_LOG_ERROR, "AVFilterLink::hw_frames_ctx is NULL\n");
-+        goto end;
-+    }
++    // inputs->filter_ctx->inputs[0]->hw_frames_ctx = av_buffer_ref(dec_ctx->hw_frames_ctx);
++    // if (!inputs->filter_ctx->inputs[0]->hw_frames_ctx) {
++    //     av_log(NULL, AV_LOG_ERROR, "AVFilterLink::hw_frames_ctx is NULL\n");
++    //     goto end;
++    // }
 +    for (cur = outputs, i = 0; cur; cur = cur->next, i++) {
 +        int have_name = cur->name ? 1 : 0;
 +        split_check &= have_name;
@@ -5903,7 +5913,7 @@ index edc4dd3..e0b5904 100755
 +        revision=$(cd "$1" && git describe --tags --always --long 2> /dev/null)
      fi
  fi
-
+ 
 diff --git a/fftools/ffmpeg_mux_init.c b/fftools/ffmpeg_mux_init.c
 index d3d7d02..846a605 100644
 --- a/fftools/ffmpeg_mux_init.c
@@ -5913,8 +5923,8 @@ index d3d7d02..846a605 100644
      for (int i = 0; i < of->nb_streams; i++) {
          e = NULL;
 -        while ((e = av_dict_iterate(of->streams[i]->encoder_opts, e)))
-+        while ((e = av_dict_iterate(of->streams[i]->encoder_opts, e))){
-+#if CONFIG_VASTAPI
++        while ((e = av_dict_iterate(of->streams[i]->encoder_opts, e))){ 
++#if CONFIG_VASTAPI            
 +            if(!strcmp(e->key, "vast-params")){
 +                char * preset_token = strstr(e->value, "preset=");
 +                if(preset_token){
@@ -5932,14 +5942,14 @@ index d3d7d02..846a605 100644
 +                    //printf("validate_enc_avopt key %s val %s preset_value %s\n", e->key, e->value, preset_value);
 +                    free(preset_value);
 +                }
-+
++                
 +            }
-+#endif
++#endif            
              av_dict_set(&unused_opts, e->key, NULL, 0);
 +        }
-+
++            
      }
-
+ 
      e = NULL;
 diff --git a/fftools/ffmpeg_opt.c b/fftools/ffmpeg_opt.c
 index 4b3f978..2d3f097 100644
@@ -5948,7 +5958,7 @@ index 4b3f978..2d3f097 100644
 @@ -526,6 +526,21 @@ static int opt_qsv_device(void *optctx, const char *opt, const char *arg)
  }
  #endif
-
+ 
 +#if CONFIG_VASTAPI
 +static int opt_vastapi_device(void *optctx, const char *opt, const char *arg)
 +{
@@ -5970,7 +5980,7 @@ index 4b3f978..2d3f097 100644
 @@ -1876,6 +1891,12 @@ const OptionDef options[] = {
          "set VAAPI hardware device (DirectX adapter index, DRM path or X11 display name)", "device" },
  #endif
-
+ 
 +#if CONFIG_VASTAPI
 +    { "vastapi_device", OPT_TYPE_FUNC, OPT_FUNC_ARG | OPT_EXPERT,
 +        { .func_arg = opt_vastapi_device },
@@ -5987,7 +5997,7 @@ index 113adb2..5264a9e 100644
 @@ -984,12 +984,24 @@ OBJS-$(CONFIG_ADPCM_YAMAHA_DECODER)       += adpcm.o adpcm_data.o
  OBJS-$(CONFIG_ADPCM_YAMAHA_ENCODER)       += adpcmenc.o adpcm_data.o
  OBJS-$(CONFIG_ADPCM_ZORK_DECODER)         += adpcm.o adpcm_data.o
-
+ 
 +OBJS-$(CONFIG_VASTAPI_ENCODE)             += vastapi_encode.o
 +OBJS-$(CONFIG_H264_VASTAPI_ENCODER)       += vastapi_encode_h264.o h264_levels.o
 +OBJS-$(CONFIG_HEVC_VASTAPI_ENCODER)       += vastapi_encode_h265.o h265_profile_level.o
@@ -6022,7 +6032,7 @@ index 2386b45..b95a7e1 100644
 --- a/libavcodec/allcodecs.c
 +++ b/libavcodec/allcodecs.c
 @@ -828,6 +828,10 @@ extern const FFCodec ff_idf_decoder;
-
+ 
  /* external libraries, that shouldn't be used by default if one of the
   * above is available */
 +extern const FFCodec ff_h264_vastapi_encoder;
@@ -6076,7 +6086,7 @@ index 32a795e..058697b 100644
          return AVERROR(ENOSYS);
      }
 +    */
-
+ 
      s->pix_fmt = pix_fmt;
      avctx->pix_fmt = ret;
 @@ -1592,6 +1601,9 @@ const FFCodec ff_av1_decoder = {
@@ -6089,19 +6099,114 @@ index 32a795e..058697b 100644
  #if CONFIG_AV1_VDPAU_HWACCEL
          HWACCEL_VDPAU(av1),
  #endif
+diff --git a/libavcodec/avcodec.c b/libavcodec/avcodec.c
+index a9a87bb..d1d37a4 100644
+--- a/libavcodec/avcodec.c
++++ b/libavcodec/avcodec.c
+@@ -54,6 +54,20 @@
+  */
+ #define FF_MAX_EXTRADATA_SIZE ((1 << 28) - AV_INPUT_BUFFER_PADDING_SIZE)
+ 
++//n7.1 patch a3f4670
++const SideDataMap ff_sd_global_map[] = {
++    { AV_PKT_DATA_REPLAYGAIN ,                AV_FRAME_DATA_REPLAYGAIN },
++    { AV_PKT_DATA_DISPLAYMATRIX,              AV_FRAME_DATA_DISPLAYMATRIX },
++    { AV_PKT_DATA_SPHERICAL,                  AV_FRAME_DATA_SPHERICAL },
++    { AV_PKT_DATA_STEREO3D,                   AV_FRAME_DATA_STEREO3D },
++    { AV_PKT_DATA_AUDIO_SERVICE_TYPE,         AV_FRAME_DATA_AUDIO_SERVICE_TYPE },
++    { AV_PKT_DATA_MASTERING_DISPLAY_METADATA, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA },
++    { AV_PKT_DATA_CONTENT_LIGHT_LEVEL,        AV_FRAME_DATA_CONTENT_LIGHT_LEVEL },
++    { AV_PKT_DATA_ICC_PROFILE,                AV_FRAME_DATA_ICC_PROFILE },
++    { AV_PKT_DATA_AMBIENT_VIEWING_ENVIRONMENT,AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT },
++    { AV_PKT_DATA_NB },
++};
++
+ int avcodec_default_execute(AVCodecContext *c, int (*func)(AVCodecContext *c2, void *arg2), void *arg, int *ret, int count, int size)
+ {
+     size_t i;
 diff --git a/libavcodec/avcodec.h b/libavcodec/avcodec.h
-index 83dc487..02f148c 100644
+index 83dc487..0b6dced 100644
 --- a/libavcodec/avcodec.h
 +++ b/libavcodec/avcodec.h
-@@ -3083,5 +3083,8 @@ int avcodec_is_open(AVCodecContext *s);
+@@ -3083,5 +3083,20 @@ int avcodec_is_open(AVCodecContext *s);
  /**
   * @}
   */
 +#if CONFIG_VASTAPI
 +int avcodec_vastapi_reset_flush(const AVCodecContext *codec);//vastai reset
++/**
++ * psnr[4] and ssim[4] save Y,U,V,avg value.
++ * display_order save display order value for having B frame situation,
++ * IPPP situation is same with encoder order.
++ * lookahead_size is for 2pass situation, 1pass lookahead_size=0.
++ */
++typedef struct PsnrSsimInfo {
++    double psnr[4];
++    double ssim[4];
++    int display_order;
++} PsnrSsimInfo;
++int avcodec_vastapi_get_psnr(const AVCodecContext *avctx, int lookahead_size, PsnrSsimInfo *info);//vastai get psnr/ssim api
 +#endif
-
+ 
  #endif /* AVCODEC_AVCODEC_H */
+diff --git a/libavcodec/avcodec_internal.h b/libavcodec/avcodec_internal.h
+index 4d1cb3a..299ffed 100644
+--- a/libavcodec/avcodec_internal.h
++++ b/libavcodec/avcodec_internal.h
+@@ -28,6 +28,18 @@
+ struct AVCodecContext;
+ struct AVFrame;
+ 
++//n7.1 patch a3f4670 
++typedef struct SideDataMap {
++    enum AVPacketSideDataType packet;
++    enum AVFrameSideDataType frame;
++} SideDataMap;
++
++/**
++ * A map between packet and frame side data types.
++ * Terminated with an entry where packet=AV_PKT_DATA_NB.
++ */
++extern const SideDataMap ff_sd_global_map[];
++
+ /**
+  * avcodec_receive_frame() implementation for decoders.
+  */
+diff --git a/libavcodec/encode.c b/libavcodec/encode.c
+index 7fc9737..684e460 100644
+--- a/libavcodec/encode.c
++++ b/libavcodec/encode.c
+@@ -782,6 +782,30 @@ int ff_encode_preinit(AVCodecContext *avctx)
+             return AVERROR(ENOMEM);
+     }
+ 
++    //n7.1 patch e0de84a 
++    for (int i = 0; ff_sd_global_map[i].packet < AV_PKT_DATA_NB; i++) {
++        const enum AVPacketSideDataType type_packet = ff_sd_global_map[i].packet;
++        const enum AVFrameSideDataType  type_frame  = ff_sd_global_map[i].frame;
++        const AVFrameSideData *sd_frame;
++        AVPacketSideData      *sd_packet;
++
++        sd_frame = av_frame_side_data_get(avctx->decoded_side_data,
++                                          avctx->nb_decoded_side_data,
++                                          type_frame);
++        if (!sd_frame ||
++            av_packet_side_data_get(avctx->coded_side_data, avctx->nb_coded_side_data,
++                                    type_packet))
++
++            continue;
++
++        sd_packet = av_packet_side_data_new(&avctx->coded_side_data, &avctx->nb_coded_side_data,
++                                            type_packet, sd_frame->size, 0);
++        if (!sd_packet)
++            return AVERROR(ENOMEM);
++
++        memcpy(sd_packet->data, sd_frame->data, sd_frame->size);
++    }
++
+     if (CONFIG_FRAME_THREAD_ENCODER) {
+         ret = ff_frame_thread_encoder_init(avctx);
+         if (ret < 0)
 diff --git a/libavcodec/h264_slice.c b/libavcodec/h264_slice.c
 index e9a404e..9512a64 100644
 --- a/libavcodec/h264_slice.c
@@ -6207,7 +6312,7 @@ index 5171e4c..dc612bf 100644
 @@ -19,6 +19,10 @@
  #ifndef AVCODEC_HWACCELS_H
  #define AVCODEC_HWACCELS_H
-
+ 
 +extern const struct FFHWAccel ff_h264_vastapi_hwaccel;
 +extern const struct FFHWAccel ff_av1_vastapi_hwaccel;
 +extern const struct FFHWAccel ff_hevc_vastapi_hwaccel;
@@ -6691,10 +6796,10 @@ index 0000000..b1df782
 +};
 diff --git a/libavcodec/vastapi_decode.c b/libavcodec/vastapi_decode.c
 new file mode 100644
-index 0000000..e38ce6c
+index 0000000..4265303
 --- /dev/null
 +++ b/libavcodec/vastapi_decode.c
-@@ -0,0 +1,500 @@
+@@ -0,0 +1,503 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -6808,6 +6913,9 @@ index 0000000..e38ce6c
 +           best_fourcc, av_get_pix_fmt_name(source_format));
 +
 +    frames->sw_format = best_format;
++#if CONFIG_VASTAPI    
++    frames->source_format = source_format;
++#endif      
 +    if (avctx->internal->hwaccel_priv_data) {
 +        VASTAPIDecodeContext   *ctx  = avctx->internal->hwaccel_priv_data;
 +        AVVASTAPIFramesContext *avfc = frames->hwctx;
@@ -7266,10 +7374,10 @@ index 0000000..a813187
 +#endif /* AVCODEC_VASTAPI_DECODE_H */
 diff --git a/libavcodec/vastapi_encode.c b/libavcodec/vastapi_encode.c
 new file mode 100755
-index 0000000..045b9bd
+index 0000000..d7a6524
 --- /dev/null
 +++ b/libavcodec/vastapi_encode.c
-@@ -0,0 +1,4992 @@
+@@ -0,0 +1,5074 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -7978,10 +8086,10 @@ index 0000000..045b9bd
 +    }
 +    pic->output_buffer = (VASTBufferID)(uintptr_t)AVBufferRefPtr(pic->output_buffer_ref)->data;
 +    av_log(avctx, AV_LOG_DEBUG, "Output buffer is %#x.\n", pic->output_buffer);
-+
++    
 +    int                nb_side_data = AVFramePtr(pic->input_image)->nb_side_data;
 +    VaEncFrameSideData sd_list[MAX_SEI_COUNT];
-+
++    
 +    enum VaEncCodecID codec_id;
 +    switch (avctx->codec_descriptor->id) {
 +    case AV_CODEC_ID_H264:
@@ -8411,7 +8519,7 @@ index 0000000..045b9bd
 +        int64_t pkt_duration = 0;
 +        av_log(avctx, AV_LOG_DEBUG, "Input frame: %ux%u (%" PRId64 ").%d type %d\n", frame->width, frame->height, frame->pts,
 +               frame->duration,frame->pict_type);
-+
++        
 +        pkt_duration = func->vastapiEncCalDurPar(ctx, frame->time_base, frame->pts);
 +
 +        err = vastapi_encode_check_frame(avctx, frame);
@@ -8436,7 +8544,7 @@ index 0000000..045b9bd
 +            pic->force_idr = 0;
 +        }
 +
-+#endif
++#endif 
 +        if (frame->pict_type == AV_PICTURE_TYPE_I) {
 +            ctx->vast_param->insertIDR = ctx->input_order;
 +            pic->force_idr             = 1;
@@ -8445,7 +8553,7 @@ index 0000000..045b9bd
 +            pic->force_idr = 0;
 +            pic->insertIDR = 0;
 +        }
-+
++        
 +        sd = av_frame_get_side_data(frame, AV_FRAME_DATA_VASTAI_KEYINT);
 +        if (sd && sd->size == sizeof(uint32_t) && sd->data != NULL) {
 +            av_log(avctx, AV_LOG_DEBUG, "set new keyint = %d\n", *((uint32_t *)sd->data));
@@ -8465,18 +8573,17 @@ index 0000000..045b9bd
 +        pic->input_surface = (VASTSurfaceID)(uintptr_t)frame->data[3];
 +        pic->pts           = frame->pts;
 +        pic->pts_internal  = ctx->pts_internal++;
-+
++     
 +        pic->reserved = av_mallocz(sizeof(VASTAPIEncodeOutInfo));
 +        if (!pic->reserved) {
 +            err = AVERROR(ENOMEM);
 +            goto fail;
 +        }
 +
-+        if (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
++        if ((ctx->vast_param->multimode != VA_MULTI_CORE_MODE) && (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE)) {
 +            VASTAPIEncodeQualityMetrics *tmp = (VASTAPIEncodeQualityMetrics*)pic->reserved;
-+            err = av_buffer_replace((AVBufferRef**)&tmp->opaque_ref, frame->opaque_ref);
-+            if (err < 0)
-+                goto fail;
++            AVBufferRef **inf = (AVBufferRef **)&tmp->opaque_ref;
++            *inf = av_buffer_ref(frame->opaque_ref);
 +            tmp->opaque = frame->opaque;
 +        }
 +
@@ -8487,7 +8594,7 @@ index 0000000..045b9bd
 +#else
 +        av_frame_move_ref(pic->input_image, frame);
 +#endif
-+
++        
 +        func->vastapiEncCalTimeStampPar(ctx, pic, pkt_duration);
 +
 +        pic->display_order = ctx->input_order;
@@ -8550,7 +8657,7 @@ index 0000000..045b9bd
 +    }
 +    if (ctx->flush_pkt_flag &&
 +        (ctx->vast_param->lookaheadDepth > 0 || ctx->vast_param->multimode == VA_MULTI_CORE_MODE)) {
-+            err = func->vastapiEncFlushEncoder(ctx, pkt);
++            err = func->vastapiEncFlushEncoder(ctx, pkt);         
 +        return err;
 +    }
 +
@@ -8759,6 +8866,18 @@ index 0000000..045b9bd
 +    return err;
 +}
 +
++static int ff_vastapi_encode_get_psnr(const AVCodecContext *avctx, int lookahead_size, PsnrSsimInfo *info)
++{
++    int err;
++    int max_value;
++    double *psnr_buffer = NULL;
++    double mse_y, mse_u, mse_v, mse_avg;
++    VASTAPIEncodeContext *ctx = avctx->priv_data;
++    VASTStatus vas = 0;
++
++    return vas;
++}
++
 +// vastai reset
 +int avcodec_vastapi_reset_flush(const AVCodecContext *avctx)
 +{
@@ -8768,6 +8887,13 @@ index 0000000..045b9bd
 +    avci->draining      = 0;
 +    avci->draining_done = 0;
 +    ret                 = ff_vastapi_encode_reset_flush(avctx);
++    return ret;
++}
++
++int avcodec_vastapi_get_psnr(const AVCodecContext *avctx, int lookahead_size, PsnrSsimInfo *info)
++{
++    int ret;
++    ret = ff_vastapi_encode_get_psnr(avctx, lookahead_size, info);
 +    return ret;
 +}
 +
@@ -8842,7 +8968,7 @@ index 0000000..045b9bd
 +        err = AVERROR(ENOMEM);
 +        goto fail;
 +    }
-+
++    
 +    err = ff_vastapi_encode_reset_init(avctx);
 +    if (err != 0)
 +        goto fail;
@@ -9105,17 +9231,14 @@ index 0000000..045b9bd
 +
 +        err = vastapi_encode_head_issue(avctx, pic);
 +        if (err < 0) {
-+            av_log(avctx, AV_LOG_ERROR, "Encode head issue failed: %d.\n", err);
++            printf("Encode head issue failed: %d.\n", err);
 +        }
 +
 +        // err = vastapi_encode_output_head(avctx, pic, data, &len);
 +        err = func->vastapiEncHeadOutput(ctx, pic, data, &len);
 +        if (err < 0) {
-+            av_log(avctx, AV_LOG_ERROR, "Output failed: %d.\n", err);
-+        }
-+
-+        if (err < 0) {
 +            av_log(avctx, AV_LOG_ERROR, "Encode head out failed: %d.\n", err);
++            func->vastapiEncFreeHead(ctx, pic);
 +            goto fail;
 +        } else{
 +            avctx->extradata_size = len;
@@ -9123,6 +9246,7 @@ index 0000000..045b9bd
 +                                        AV_INPUT_BUFFER_PADDING_SIZE);
 +            if (!avctx->extradata) {
 +                err = AVERROR(ENOMEM);
++                func->vastapiEncFreeHead(ctx, pic);
 +                goto fail;
 +            }
 +            av_log(avctx, AV_LOG_DEBUG, "will cp head size %ld\n",len);
@@ -9163,10 +9287,48 @@ index 0000000..045b9bd
 +        ctx->va_config = VAST_INVALID_ID;
 +    }
 +
++
++
++    switch (avctx->codec_id) {
++        case AV_CODEC_ID_H264:
++            {
++                VASTAPIEncodeH264Context *priv = avctx->priv_data;
++
++                ff_cbs_fragment_free(PRIV_CBC & priv->current_access_unit);
++                ff_cbs_close(&priv->cbc);
++                av_freep(&priv->sei_identifier_string);
++            }
++            break;
++        case AV_CODEC_ID_HEVC:
++            {   VASTAPIEncodeH265Context *priv = avctx->priv_data;
++
++                ff_cbs_fragment_free(PRIV_CBC & priv->current_access_unit);
++                ff_cbs_close(&priv->cbc);
++            }
++            break;
++        case AV_CODEC_ID_AV1:
++            {
++                VASTAPIEncodeAV1Context *priv = avctx->priv_data;
++                ff_cbs_fragment_free(PRIV_CBC & priv->current_obu);
++                ff_cbs_close(&priv->cbc);
++            }
++            break;
++        case AV_CODEC_ID_MJPEG:
++            {
++                VASTAPIEncodeMJPEGContext *priv = avctx->priv_data;
++
++                ff_cbs_fragment_free(PRIV_CBC & priv->current_fragment);
++                ff_cbs_close(&priv->cbc);
++            }
++            break;
++    }
++
++
 +    av_freep(&ctx->codec_sequence_params);
 +    av_freep(&ctx->codec_picture_params);
 +
 +    av_freep(&ctx->vast_param); // vastai add cfg
++    av_freep(&avctx->extradata);
 +
 +    av_buffer_unref(&ctx->recon_frames_ref);
 +    return 0;
@@ -9486,6 +9648,7 @@ index 0000000..045b9bd
 +        priv->dpb_frames = ctx->max_b_depth;
 +    }
 +#endif
++
 +
 +    if (avctx->level != FF_LEVEL_UNKNOWN) {
 +        sps->level_idc = avctx->level;
@@ -10622,8 +10785,8 @@ index 0000000..045b9bd
 +        ptl->general_profile_compatibility_flag[1] = bit_depth == 8;
 +        ptl->general_profile_compatibility_flag[2] = bit_depth <= 10;
 +    }
-+
-+    if(ptl->general_profile_idc == 4)
++    
++    if(ptl->general_profile_idc == 4) 
 +        ptl->general_profile_compatibility_flag[4] = 1;
 +
 +    ptl->general_progressive_source_flag    = 1;
@@ -11517,8 +11680,8 @@ index 0000000..045b9bd
 +    av_log(avctx, AV_LOG_DEBUG, ">>> vastapi_encode_av1_init_sequence_params\n");
 +    VASTAPIEncodeContext               *ctx  = avctx->priv_data;
 +    VASTAPIEncodeAV1Context            *priv = avctx->priv_data;
-+    VASTEncSequenceParameterBufferH264 *vseq = ctx->codec_sequence_params;
-+    VASTEncPictureParameterBufferH264  *vpic = ctx->codec_picture_params;
++    VASTEncSequenceParameterBufferAV1 *vseq = ctx->codec_sequence_params;
++    VASTEncPictureParameterBufferAV1  *vpic = ctx->codec_picture_params;
 +
 +    AV1RawOBU                *sh_obu = &priv->sh;
 +    AV1RawSequenceHeader     *seq = &sh_obu->obu.sequence_header;
@@ -11571,7 +11734,7 @@ index 0000000..045b9bd
 +        seq->enable_order_hint = 0;
 +    else
 +        seq->enable_order_hint = 1;
-+
++    
 +    if(seq->enable_order_hint)
 +        seq->order_hint_bits_minus_1 = 7;//DEFAULT_EXPLICIT_ORDER_HINT_BITS - 1;
 +
@@ -11646,6 +11809,8 @@ index 0000000..045b9bd
 +        }
 +    }
 +
++
++
 +    ret = vastapi_encode_av1_add_obu(avctx, obu, AV1_OBU_SEQUENCE_HEADER, &priv->sh);
 +    if (ret < 0)
 +        goto fail;
@@ -11653,6 +11818,23 @@ index 0000000..045b9bd
 +    ret = vastapi_encode_av1_write_obu(avctx, priv->sh_data, &priv->sh_data_len, obu);
 +    if (ret < 0)
 +        goto fail;
++
++    if(seq->seq_level_idx[0] != 13){
++        seq->seq_level_idx[0] = 13; // vast
++        av_log(avctx, AV_LOG_WARNING, "hardware AV1 not support this level, using levle 13 instead!\n");
++    }
++    // Fill VASTAPI parameter buffers.
++    *vseq = (VASTEncSequenceParameterBufferAV1) {
++        .general_profile_idc = seq->seq_profile,
++        .general_level_idc   = seq->seq_level_idx[0],
++        .general_tier_flag   = seq->seq_tier[0],
++
++        .intra_period     = ctx->vast_param->intraPicRate, //vastai add cfg
++        .intra_idr_period = ctx->vast_param->intraPicRate, //vastai add cfg
++        .ip_period        = ctx->b_per_p + 1,
++        .bits_per_second  = ctx->va_bit_rate,
++    };
++
 +fail:
 +    ff_cbs_fragment_reset(obu);
 +    return ret;
@@ -11731,13 +11913,21 @@ index 0000000..045b9bd
 +    // can write its own headers and there is no metadata to include.
 +    ctx->desired_packed_headers = 0;
 +
-+    priv->profile = 0; // vast default FF_PROFILE_AV1_MAIN
-+    priv->level = 13;  // vast default 5.1
-+
 +    if (avctx->profile == FF_PROFILE_UNKNOWN)
 +        avctx->profile = priv->profile;
 +    if (avctx->level == FF_LEVEL_UNKNOWN)
 +        avctx->level = priv->level;
++
++// Reject unsupported profiles.
++    switch (avctx->profile) {
++    case FF_PROFILE_AV1_HIGH:
++    case FF_PROFILE_AV1_PROFESSIONAL:
++        av_log(avctx, AV_LOG_WARNING,
++               "AV1 high and professional profile is not "
++               "supported hardware, using main profile instead.\n");
++        avctx->profile = FF_PROFILE_AV1_MAIN;
++        break;
++    }
 +
 +    if (avctx->level != FF_LEVEL_UNKNOWN && avctx->level & ~0xff) {
 +        av_log(avctx, AV_LOG_ERROR,
@@ -12592,11 +12782,11 @@ index 0000000..04f92f3
 +
 +#endif /* AVCODEC_VASTAPI_ENCODE_H */
 diff --git a/libavcodec/vastapi_encode_av1.c b/libavcodec/vastapi_encode_av1.c
-new file mode 100644
-index 0000000..244a056
+new file mode 100755
+index 0000000..3b95d49
 --- /dev/null
 +++ b/libavcodec/vastapi_encode_av1.c
-@@ -0,0 +1,110 @@
+@@ -0,0 +1,140 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -12636,6 +12826,36 @@ index 0000000..244a056
 +      0,
 +      1,
 +      FLAGS },
++
++    { "profile",
++      "Set profile (general_profile_idc)",
++      OFFSET(profile),
++      AV_OPT_TYPE_INT,
++      { .i64 = FF_PROFILE_UNKNOWN },
++      FF_PROFILE_UNKNOWN,
++      0xff,
++      FLAGS,
++      "profile" },
++
++#define PROFILE(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, { .i64 = value }, 0, 0, FLAGS, "profile"
++    { PROFILE("main", FF_PROFILE_AV1_MAIN) },
++    { PROFILE("high", FF_PROFILE_AV1_HIGH) },
++    { PROFILE("professional", FF_PROFILE_AV1_PROFESSIONAL) },
++#undef PROFILE
++
++{ "level",
++      "Set level (general_level_idc)",
++      OFFSET(level),
++      AV_OPT_TYPE_INT,
++      { .i64 = FF_LEVEL_UNKNOWN },
++      FF_LEVEL_UNKNOWN,
++      0xff,
++      FLAGS,
++      "level" },
++
++#define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, { .i64 = value }, 0, 0, FLAGS, "level"
++    { LEVEL("5.1", 13) },
++#undef LEVEL
 +
 +    { "vast-params",
 +      "set the hantro vastapi configuration using a :-separated list of key=value parameters",
@@ -14236,7 +14456,7 @@ index 994d977..6041a0a 100644
 +++ b/libavfilter/Makefile
 @@ -188,6 +188,7 @@ OBJS-$(CONFIG_SINE_FILTER)                   += asrc_sine.o
  OBJS-$(CONFIG_ANULLSINK_FILTER)              += asink_anullsink.o
-
+ 
  # video filters
 +OBJS-$(CONFIG_MISC_VASTAPI_FILTER)           += vf_misc_vastapi.o vastapi_vpp.o
  OBJS-$(CONFIG_ADDROI_FILTER)                 += vf_addroi.o
@@ -14260,7 +14480,7 @@ index 831871d..d212afd 100644
 +++ b/libavfilter/avfilter.c
 @@ -948,7 +948,20 @@ int avfilter_init_str(AVFilterContext *filter, const char *args)
      int ret = 0;
-
+ 
      if (args && *args) {
 +#ifdef CONFIG_VASTAPI
 +        if ( !strcmp(filter->filter->name, "misc_vastapi") ) {
@@ -14273,9 +14493,9 @@ index 831871d..d212afd 100644
 +        } else {
 +            ret = ff_filter_opt_parse(filter, filter->filter->priv_class, &options, args);
 +        }
-+#else
++#else        
          ret = ff_filter_opt_parse(filter, filter->filter->priv_class, &options, args);
-+#endif
++#endif        
          if (ret < 0)
              goto fail;
      }
@@ -14290,7 +14510,7 @@ index 831871d..d212afd 100644
 +}
 +#endif
 +
-
+ 
  /*
     Filter scheduling and activation
 diff --git a/libavfilter/avfilter.h b/libavfilter/avfilter.h
@@ -14300,13 +14520,52 @@ index a34e61f..41e9563 100644
 @@ -1425,6 +1425,9 @@ char *avfilter_graph_dump(AVFilterGraph *graph, const char *options);
   */
  int avfilter_graph_request_oldest(AVFilterGraph *graph);
-
+ 
 +#ifdef CONFIG_VASTAPI
 +int ff_filter_activate_default_extern(AVFilterContext *filter);
 +#endif
  /**
   * @}
   */
+diff --git a/libavfilter/buffersrc.c b/libavfilter/buffersrc.c
+index fcae4f8..8750970 100644
+--- a/libavfilter/buffersrc.c
++++ b/libavfilter/buffersrc.c
+@@ -443,6 +443,7 @@ static int query_formats(AVFilterContext *ctx)
+     switch (ctx->outputs[0]->type) {
+     case AVMEDIA_TYPE_VIDEO: {
+         enum AVPixelFormat swfmt = c->pix_fmt;
++        enum AVPixelFormat sourcefmt = AV_PIX_FMT_NONE;
+         if (av_pix_fmt_desc_get(swfmt)->flags & AV_PIX_FMT_FLAG_HWACCEL) {
+             if (!c->hw_frames_ctx) {
+                 av_log(ctx, AV_LOG_ERROR, "Setting BufferSourceContext.pix_fmt "
+@@ -450,15 +451,26 @@ static int query_formats(AVFilterContext *ctx)
+                 return AVERROR(EINVAL);
+             }
+             swfmt = ((AVHWFramesContext *) c->hw_frames_ctx->data)->sw_format;
++#if CONFIG_VASTAPI            
++            sourcefmt = ((AVHWFramesContext *) c->hw_frames_ctx->data)->source_format;
++#endif            
+         }
+         if ((ret = ff_add_format         (&formats, c->pix_fmt)) < 0 ||
+             (ret = ff_set_common_formats (ctx     , formats   )) < 0)
+             return ret;
+         /* force specific colorspace/range downstream only for ordinary YUV */
+         if (ff_fmt_is_regular_yuv(swfmt)) {
++#if CONFIG_VASTAPI 
++            if(sourcefmt != AV_PIX_FMT_YUVJ420P && c->hw_frames_ctx){
++                if ((ret = ff_add_format(&color_spaces, c->color_space)) < 0 ||
++                    (ret = ff_set_common_color_spaces(ctx, color_spaces)) < 0)
++                    return ret;
++            }
++#else
+             if ((ret = ff_add_format(&color_spaces, c->color_space)) < 0 ||
+                 (ret = ff_set_common_color_spaces(ctx, color_spaces)) < 0)
+                 return ret;
++#endif
+             if ((ret = ff_add_format(&color_ranges, c->color_range)) < 0)
+                 return ret;
+             if (c->color_range == AVCOL_RANGE_UNSPECIFIED) {
 diff --git a/libavfilter/graphparser.c b/libavfilter/graphparser.c
 index 5d6dcdb..924606a 100644
 --- a/libavfilter/graphparser.c
@@ -14314,7 +14573,7 @@ index 5d6dcdb..924606a 100644
 @@ -378,8 +378,25 @@ static int filter_parse(void *logctx, const char **filter,
              goto fail;
          }
-
+ 
 +
 +
 +#ifdef CONFIG_VASTAPI
@@ -14327,13 +14586,13 @@ index 5d6dcdb..924606a 100644
 +            // }
 +        }else{
 +            ret = ff_filter_opt_parse(logctx, f ? f->priv_class : NULL,
-+                                    &p->opts, opts);
++                                    &p->opts, opts);            
 +        }
 +#else
 +
          ret = ff_filter_opt_parse(logctx, f ? f->priv_class : NULL,
                                    &p->opts, opts);
-+#endif
++#endif                                     
          av_freep(&opts);
          if (ret < 0)
              goto fail;
@@ -14700,10 +14959,10 @@ index 0000000..b5b6cb3
 +#endif /* AVFILTER_VASTAPI_VPP_H */
 diff --git a/libavfilter/vf_misc_vastapi.c b/libavfilter/vf_misc_vastapi.c
 new file mode 100644
-index 0000000..80f06f3
+index 0000000..870a05e
 --- /dev/null
 +++ b/libavfilter/vf_misc_vastapi.c
-@@ -0,0 +1,831 @@
+@@ -0,0 +1,882 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -14886,7 +15145,7 @@ index 0000000..80f06f3
 +    sub_string = av_strtok(ctx->vpp_ctx.vastfilter_params.filt_params->output_size, split,&saveptr);
 +    const char *expr;
 +    double res;
-+
++    
 +    int ret, w = 0, h = 0,factor_w = 1,factor_h = 1,scale_w,scale_h;
 +    ctx->var_values[VAR_IN_W]  = ctx->var_values[VAR_IW] = inlink->w;
 +    ctx->var_values[VAR_IN_H]  = ctx->var_values[VAR_IH] = inlink->h;
@@ -15114,12 +15373,12 @@ index 0000000..80f06f3
 +    }
 +
 +    if(strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"if(")
-+     || strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"(")
++     || strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"(") 
 +     || strstr(ctx->vpp_ctx.vastfilter_params.filt_params->output_size,"-1")){
 +        if (eval_cmd_strings_prase(inlink,ctx,"x+") != ctx->vpp_ctx.vastfilter_params.filt_params->nb_outputs) {
 +            av_log(ctx, AV_LOG_ERROR, "The input parameters outputs and output_size do not match .\n");
 +            return -1;
-+        }
++        }   
 +    }
 +
 +    for (i = 0; i < vctx->vastfilter_params.filt_params->nb_outputs; i++) {
@@ -15164,7 +15423,7 @@ index 0000000..80f06f3
 +    if (err < 0)
 +        return err;
 +    if (inlink->sample_aspect_ratio.num){
-+        if((vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterRotate &&
++        if((vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterRotate && 
 +            vpp_ctx->vastfilter_params.filt_params->rotate_degree != 180 && vpp_ctx->vastfilter_params.filt_params->rotate_degree != -180)
 +            || vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterTranspose)
 +            outlink->sample_aspect_ratio = av_div_q((AVRational) { 1, 1 }, inlink->sample_aspect_ratio);
@@ -15225,6 +15484,50 @@ index 0000000..80f06f3
 +        err                                                          = av_frame_copy_props(output_frame, input_frame);
 +        if (err < 0)
 +            goto fail;
++
++        if(vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterCSC){
++            //output_frame->format = vpp_ctx->output_format;
++            if(vpp_ctx->vastfilter_params.filt_params->out_fullrange == 1){
++                output_frame->color_range = AVCOL_RANGE_JPEG;
++            }else if(vpp_ctx->vastfilter_params.filt_params->out_fullrange == 0){
++                output_frame->color_range = AVCOL_RANGE_MPEG;
++            }else{
++                output_frame->color_range = input_frame->color_range;
++                av_log(ctx, AV_LOG_WARNING, "color range %d not support, set out eq in:%d\n",
++                        vpp_ctx->vastfilter_params.filt_params->out_fullrange, input_frame->color_range);
++            }
++
++            if(vpp_ctx->vastfilter_params.filt_params->out_primaries == REC_470_BG_C){
++                output_frame->color_primaries = AVCOL_PRI_BT470BG;
++            }else if(vpp_ctx->vastfilter_params.filt_params->out_primaries == SMPTE_C){
++                output_frame->color_primaries = AVCOL_PRI_SMPTE170M;
++            }else if(vpp_ctx->vastfilter_params.filt_params->out_primaries == REC_709_C){
++                output_frame->color_primaries = AVCOL_PRI_BT709;
++            }else{
++                output_frame->color_primaries = input_frame->color_primaries;
++                av_log(ctx, AV_LOG_WARNING, "color primaries %d not support, set out eq in:%d\n",
++                        vpp_ctx->vastfilter_params.filt_params->out_primaries, input_frame->color_primaries);
++            }
++
++            if(vpp_ctx->vastfilter_params.filt_params->out_transfer == REC_709_T){
++                output_frame->color_trc = AVCOL_TRC_BT709;
++            }else{
++                output_frame->color_trc = input_frame->color_trc;
++                av_log(ctx, AV_LOG_WARNING, "color transfer %d not support, set out eq in:%d\n",
++                        vpp_ctx->vastfilter_params.filt_params->out_transfer, input_frame->color_trc);
++            }
++
++            if(vpp_ctx->vastfilter_params.filt_params->out_matrix == REC_601){
++                output_frame->colorspace = AVCOL_SPC_SMPTE170M;
++            }else if(vpp_ctx->vastfilter_params.filt_params->out_matrix == REC_709_M){
++                output_frame->colorspace = AVCOL_SPC_BT709;
++            }else{
++                output_frame->colorspace = input_frame->colorspace;
++                av_log(ctx, AV_LOG_WARNING, "color matrix %d not support, set out eq in:%d\n",
++                        vpp_ctx->vastfilter_params.filt_params->out_matrix, input_frame->colorspace);
++            }
++        }
++
 +        ctx->output_frames[i] = output_frame;
 +    }
 +
@@ -15351,36 +15654,32 @@ index 0000000..80f06f3
 +        return ret;
 +    }
 +
-+    if(!overlay_frame){
-+        ret = AVERROR(EINVAL);
-+        return ret;
-+    }
-+
-+    if (overlay_frame->width % 2 == 1) {
-+        overlay_frame->width--;
-+    }
-+    if (overlay_frame->height % 2 == 1) {
-+        overlay_frame->height--;
-+    }
-+    if (ctx->is_enable != 1) {
-+        ctx->overlay_size = overlay_frame->width * overlay_frame->height * 5 / 2; // yuva
-+        ctx->overlay_data = malloc(sizeof(unsigned char) * ctx->overlay_size);
-+        ctx->is_enable    = 1;
-+    }
-+
-+    ret = save_yuva(ctx, ctx->overlay_data, overlay_frame);
-+    if (ret != 0) {
-+        av_log(ctx, AV_LOG_ERROR, "Failed to save overlay yuva\n");
-+        return ret;
++    if(overlay_frame){
++        if (overlay_frame->width % 2 == 1) {
++            overlay_frame->width--;
++        }
++        if (overlay_frame->height % 2 == 1) {
++            overlay_frame->height--;
++        }
++        if (ctx->is_enable != 1) {
++            ctx->overlay_size = overlay_frame->width * overlay_frame->height * 5 / 2; // yuva
++            ctx->overlay_data = malloc(sizeof(unsigned char) * ctx->overlay_size);
++            ctx->is_enable    = 1;
++        }
++        ret = save_yuva(ctx, ctx->overlay_data, overlay_frame);
++        if (ret != 0) {
++            av_log(ctx, AV_LOG_ERROR, "Failed to save overlay yuva\n");
++            return ret;
++        }
++        vpp_ctx->vastfilter_params.pipeline_params.overlay_width  = overlay_frame->width;
++        vpp_ctx->vastfilter_params.pipeline_params.overlay_height = overlay_frame->height;
++        vpp_ctx->vastfilter_params.pipeline_params.overlay_data   = ctx->overlay_data;
 +    }
 +
 +    vpp_ctx->vastfilter_params.pipeline_params.filt_params    = vpp_ctx->vastfilter_params.filt_params;
 +    vpp_ctx->vastfilter_params.pipeline_params.width          = main_frame->width;
 +    vpp_ctx->vastfilter_params.pipeline_params.height         = main_frame->height;
 +    vpp_ctx->vastfilter_params.pipeline_params.type           = vpp_ctx->vastfilter_params.filt_params->type;
-+    vpp_ctx->vastfilter_params.pipeline_params.overlay_width  = overlay_frame->width;
-+    vpp_ctx->vastfilter_params.pipeline_params.overlay_height = overlay_frame->height;
-+    vpp_ctx->vastfilter_params.pipeline_params.overlay_data   = ctx->overlay_data;
 +    av_hwframe_sync_surface(main_frame);
 +    ret = ff_vastapi_vpp_render_picture(avctx, &vpp_ctx->vastfilter_params, main_frame);
 +    if (ret < 0) {
@@ -15407,7 +15706,7 @@ index 0000000..80f06f3
 +        ff_inlink_set_status(inlink, AVERROR_EOF);
 +        return 0;
 +    }
-+
++    
 +    if (vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterOverlay) {
 +        ret = ff_framesync_activate(&ctx->fs);
 +    } else {
@@ -15446,7 +15745,6 @@ index 0000000..80f06f3
 +    };
 +
 +    int                 err;
-+    MiscVASTAPIContext *ctx = avctx->priv;
 +
 +#if FF_GE(N441)
 +    err = ff_formats_ref(ff_make_format_list(pix_fmts), &avctx->inputs[0]->outcfg.formats);
@@ -15462,6 +15760,18 @@ index 0000000..80f06f3
 +#endif
 +    if (err < 0)
 +        return err;
++        
++    if(vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterCSC){
++        enum AVColorRange out_color_range = AVCOL_RANGE_UNSPECIFIED;
++        if(vpp_ctx->vastfilter_params.filt_params->out_fullrange == 1){
++            out_color_range = AVCOL_RANGE_JPEG;
++        }else if(vpp_ctx->vastfilter_params.filt_params->out_fullrange == 0){
++            out_color_range = AVCOL_RANGE_MPEG;
++        }
++        err = ff_formats_ref(ff_make_formats_list_singleton(out_color_range), &avctx->outputs[0]->incfg.color_ranges);
++        if (err < 0)
++            return err;        
++    }
 +
 +    if (vpp_ctx->vastfilter_params.filt_params->type == VASTProcFilterOverlay) {
 +        enum AVPixelFormat overlay_pix_fmts[] = { AV_PIX_FMT_YUVA420P, AV_PIX_FMT_NONE };
@@ -15576,7 +15886,7 @@ index 48d1951..ee7598b 100644
 --- a/libavutil/cpu.c
 +++ b/libavutil/cpu.c
 @@ -212,6 +212,11 @@ int av_cpu_count(void)
-
+ 
      int nb_cpus = 1;
      int count   = 0;
 +
@@ -15620,16 +15930,16 @@ index 8aa05ec..a179d29 100644
 +#endif
 +
  };
-
+ 
  enum AVActiveFormatDescription {
 @@ -750,6 +774,9 @@ typedef struct AVFrame {
      int64_t duration;
  } AVFrame;
-
+ 
 +#if CONFIG_VASTAPI
 +#include "frame_vastapi.h"
 +#endif
-
+ 
  /**
   * Allocate an AVFrame and set its fields to default values.  The resulting
 diff --git a/libavutil/frame_vastapi.h b/libavutil/frame_vastapi.h
@@ -15689,9 +15999,9 @@ index fa99a0d..323669b 100644
      AVFrame **frames;
      int i, ret = 0;
 -
-+#ifdef CONFIG_VASTAPI
++#ifdef CONFIG_VASTAPI 
 +    int pre_pool_size = ctx->initial_pool_size;
-+#endif
++#endif  
      frames = av_calloc(ctx->initial_pool_size, sizeof(*frames));
      if (!frames)
          return AVERROR(ENOMEM);
@@ -15699,7 +16009,7 @@ index fa99a0d..323669b 100644
          ret = av_hwframe_get_buffer(ref, frames[i], 0);
          if (ret < 0)
              goto fail;
-+#ifdef CONFIG_VASTAPI
++#ifdef CONFIG_VASTAPI            
 +        if(pre_pool_size != ctx->initial_pool_size){
 +            frames = av_realloc(frames, ctx->initial_pool_size*sizeof(*frames));
 +            if(!frames){
@@ -15707,14 +16017,14 @@ index fa99a0d..323669b 100644
 +            }
 +            memset(&frames[pre_pool_size], 0, sizeof(*frames)*(ctx->initial_pool_size - pre_pool_size));
 +            pre_pool_size = ctx->initial_pool_size;
-+        }
++        }          
 +#endif
 +
      }
-
+ 
  fail:
 diff --git a/libavutil/hwcontext.h b/libavutil/hwcontext.h
-index bac30de..3386033 100644
+index bac30de..527050b 100644
 --- a/libavutil/hwcontext.h
 +++ b/libavutil/hwcontext.h
 @@ -29,6 +29,7 @@ enum AVHWDeviceType {
@@ -15725,7 +16035,7 @@ index bac30de..3386033 100644
      AV_HWDEVICE_TYPE_DXVA2,
      AV_HWDEVICE_TYPE_QSV,
      AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
-@@ -215,6 +216,19 @@ typedef struct AVHWFramesContext {
+@@ -215,6 +216,20 @@ typedef struct AVHWFramesContext {
       * Must be set by the user before calling av_hwframe_ctx_init().
       */
      int width, height;
@@ -15741,14 +16051,15 @@ index bac30de..3386033 100644
 +     * Must be set by the user before calling av_hwframe_ctx_init().
 +     */
 +    int frame_buffer_flag;
++    enum AVPixelFormat source_format;
 +#endif
  } AVHWFramesContext;
-
+ 
  /**
-@@ -400,6 +414,69 @@ int av_hwframe_get_buffer(AVBufferRef *hwframe_ctx, AVFrame *frame, int flags);
+@@ -400,6 +415,80 @@ int av_hwframe_get_buffer(AVBufferRef *hwframe_ctx, AVFrame *frame, int flags);
   */
  int av_hwframe_transfer_data(AVFrame *dst, const AVFrame *src, int flags);
-
+ 
 +#if CONFIG_VASTAPI
 +int av_hwframe_sync_surface(const AVFrame *src);
 +
@@ -15790,6 +16101,17 @@ index bac30de..3386033 100644
 +int av_hwframe_get_dmabuffer(AVHWFramesContext* hwfc, AVFrame *frame);
 +
 +/**
++ * Set vastai soc addr to surface id, the soc addr is from dmabuf.
++ *
++ * @param hw_frame hw_frame which contain a surface id, surface_id and hw_frames_ctx MUST be setted.
++ *
++ * @param dmabuf_fd the dmabuf fd from buffer exporter.
++ *
++ * @return 0 on success, a negative AVERROR code on failure
++ */
++int av_hwframe_set_addr_to_surfaceid_from_fd(const AVFrame *src, int dmabuf_fd);
++
++/**
 + * transfer a dma buffer to device,  user may set a dmabuffer fd or phy addr
 + *
 + * @param dst the dst AVframe. catch the surface id
@@ -15816,10 +16138,10 @@ index bac30de..3386033 100644
      /**
       * Transfer the data from the queried hw frame.
 diff --git a/libavutil/hwcontext_internal.h b/libavutil/hwcontext_internal.h
-index e32b786..dd2bdd4 100644
+index e32b786..6eb6497 100644
 --- a/libavutil/hwcontext_internal.h
 +++ b/libavutil/hwcontext_internal.h
-@@ -88,6 +88,18 @@ typedef struct HWContextType {
+@@ -88,6 +88,19 @@ typedef struct HWContextType {
                                           AVHWFramesContext *src_ctx, int flags);
      int              (*frames_derive_from)(AVHWFramesContext *dst_ctx,
                                             AVHWFramesContext *src_ctx, int flags);
@@ -15828,6 +16150,7 @@ index e32b786..dd2bdd4 100644
 +    int              (*get_frame_addr)(AVHWFramesContext *ctx, const AVFrame *src,
 +                                uint64_t* frame_addr);
 +    int              (*set_frame_addr)(AVHWFramesContext *ctx, const AVFrame *src, uint64_t frame_addr);
++    int              (*set_frame_addr_from_fd)(AVHWFramesContext *ctx, const AVFrame *src, int dmabuf_fd);
 +    int              (*frames_get_dmabuffer)(AVHWFramesContext *ctx, AVFrame *frame);
 +    int              (*transfer_data_to_ex)(AVHWFramesContext *hwfc,
 +                                  AVFrame *dst, const AVFrame *src, int src_type);
@@ -15836,9 +16159,9 @@ index e32b786..dd2bdd4 100644
 +#endif
 +
  } HWContextType;
-
+ 
  typedef struct FFHWFramesContext {
-@@ -159,6 +171,7 @@ extern const HWContextType ff_hwcontext_type_dxva2;
+@@ -159,6 +172,7 @@ extern const HWContextType ff_hwcontext_type_dxva2;
  extern const HWContextType ff_hwcontext_type_opencl;
  extern const HWContextType ff_hwcontext_type_qsv;
  extern const HWContextType ff_hwcontext_type_vaapi;
@@ -15848,10 +16171,10 @@ index e32b786..dd2bdd4 100644
  extern const HWContextType ff_hwcontext_type_mediacodec;
 diff --git a/libavutil/hwcontext_vastapi.c b/libavutil/hwcontext_vastapi.c
 new file mode 100644
-index 0000000..c524abe
+index 0000000..010b1f1
 --- /dev/null
 +++ b/libavutil/hwcontext_vastapi.c
-@@ -0,0 +1,1199 @@
+@@ -0,0 +1,1235 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -16554,6 +16877,20 @@ index 0000000..c524abe
 +    return func->vastapiHwSurfaceAddr(hwctx, src->data[3], &frame_addr, 0);
 +}
 +
++static int vastapi_set_addr_to_surfaceid_from_fd(AVHWFramesContext *hwfc, const AVFrame *src, int dmabuf_fd)
++{
++    AVVASTAPIDeviceContext *hwctx = hwfc->device_ctx->hwctx;
++    VastapiFunctions       *func  = (VastapiFunctions *)hwctx->vst_func;
++
++    if (!func->vastapiHwSurfaceAddrFromFd) {
++        av_log(hwfc, AV_LOG_ERROR,
++               "failed to load fun vastapiHwSurfaceAddrFromFd\n");
++        return -1;
++    }
++
++    return func->vastapiHwSurfaceAddrFromFd(hwctx, src->data[3], dmabuf_fd);
++}
++
 +static int vastapi_transfer_data_from(AVHWFramesContext *hwfc, AVFrame *dst, const AVFrame *src)
 +{
 +    AVVASTAPIDeviceContext *hwctx = DEV_CTX_HW(hwfc->device_ctx);
@@ -16833,7 +17170,7 @@ index 0000000..c524abe
 +    .device_hwctx_size    = sizeof(VASTAPIDeviceContext),
 +    .device_hwconfig_size = sizeof(AVVASTAPIHWConfig),
 +    .frames_hwctx_size    = sizeof(VASTAPIFramesContext),
-+
++    
 +    .device_create          = &vastapi_device_create,
 +    .device_derive          = &vastapi_device_derive,
 +    .device_init            = &vastapi_device_init,
@@ -16850,6 +17187,7 @@ index 0000000..c524abe
 +    .sync_surface           = &vastapi_sync_surface_s,
 +    .get_frame_addr         = &vastapi_get_addr_from_surfaceid,
 +    .set_frame_addr         = &vastapi_set_addr_to_surfaceid,
++    .set_frame_addr_from_fd = &vastapi_set_addr_to_surfaceid_from_fd,
 +    .frames_get_dmabuffer   = &vastapi_get_dma_buffer,
 +    .transfer_data_to_ex    = &vastapi_transfer_data_to_ex,
 +    .transfer_data_from_ex  = &vastapi_transfer_data_from_ex,
@@ -17015,6 +17353,27 @@ index 0000000..c524abe
 +    return ret;
 +}
 +
++int av_hwframe_set_addr_to_surfaceid_from_fd(const AVFrame *src, int dmabuf_fd)
++{
++    int ret = 0;
++    AVHWFramesContext *src_ctx = NULL;
++
++    if (!src->hw_frames_ctx) {
++        av_log(NULL, AV_LOG_ERROR, " hw_frames_ctx is NULL!!!\n");
++        return -1;
++    }
++
++    if (dmabuf_fd <= 0) {
++        av_log(NULL, AV_LOG_ERROR, " invalid dmabuf_fd: %d\n", dmabuf_fd);
++        return -1;
++    }
++
++    src_ctx = (AVHWFramesContext *)src->hw_frames_ctx->data;
++    ret     = ffhwframesctx(src_ctx)->hw_type->set_frame_addr_from_fd(src_ctx, src, dmabuf_fd);
++
++    return ret;
++}
++
 +#ifdef ANDROID
 +#include <android/log.h>
 +
@@ -17048,7 +17407,7 @@ index 0000000..c524abe
 +    char message[4096];
 +    vsnprintf(message, sizeof(message), fmt, vl);
 +
-+    __android_log_vprint(android_level, "vastai FFmpeg", message, vl);
++    __android_log_vprint(android_level, "va_video FFmpeg", message, vl);
 +}
 +#endif
 diff --git a/libavutil/hwcontext_vastapi.h b/libavutil/hwcontext_vastapi.h
@@ -17215,7 +17574,7 @@ index 46662f3..eccf591 100644
 @@ -408,8 +408,13 @@ end:
      ff_mutex_unlock(&mutex);
  }
-
+ 
 +#ifdef ANDROID
 +void android_log_callback(void* ptr, int level, const char* fmt, va_list vl);
 +static void (*av_log_callback)(void*, int, const char*, va_list) = android_log_callback;
@@ -17223,7 +17582,7 @@ index 46662f3..eccf591 100644
  static void (*av_log_callback)(void*, int, const char*, va_list) =
      av_log_default_callback;
 +#endif
-
+ 
  void av_log(void* avcl, int level, const char *fmt, ...)
  {
 diff --git a/libavutil/pixdesc.c b/libavutil/pixdesc.c
@@ -17252,7 +17611,7 @@ index 4aa20e4..4d7759e 100644
       */
      AV_PIX_FMT_VAAPI,
 +    AV_PIX_FMT_VASTAPI,
-
+ 
      AV_PIX_FMT_YUV420P16LE,  ///< planar YUV 4:2:0, 24bpp, (1 Cr & Cb sample per 2x2 Y samples), little-endian
      AV_PIX_FMT_YUV420P16BE,  ///< planar YUV 4:2:0, 24bpp, (1 Cr & Cb sample per 2x2 Y samples), big-endian
 diff --git a/libswscale/utils.c b/libswscale/utils.c
@@ -17265,7 +17624,7 @@ index 54bbd51..cec0cae 100644
      [AV_PIX_FMT_BGR555LE]    = { 1, 1 },
 +    #if CONFIG_VASTAPI
 +    [AV_PIX_FMT_VASTAPI]     = { 1, 1 },
-+    #endif
++    #endif    
      [AV_PIX_FMT_YUV420P16LE] = { 1, 1 },
      [AV_PIX_FMT_YUV420P16BE] = { 1, 1 },
      [AV_PIX_FMT_YUV422P16LE] = { 1, 1 },
