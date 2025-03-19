@@ -2304,10 +2304,10 @@ index 0000000..be63199
 +}
 diff --git a/doc/examples/vastapi_transcode.c b/doc/examples/vastapi_transcode.c
 new file mode 100644
-index 0000000..1055e7d
+index 0000000..8e4a455
 --- /dev/null
 +++ b/doc/examples/vastapi_transcode.c
-@@ -0,0 +1,1719 @@
+@@ -0,0 +1,1727 @@
 +#define CONFIG_VASTAPI 1
 +#include <stdio.h>
 +#include <errno.h>
@@ -2334,6 +2334,7 @@ index 0000000..1055e7d
 +// #define EXTERNA_BUFFER_ENCODE_TEST
 +// #define DMABUFFER_FD_ENCODE_TEST
 +// #define DUMP_YUV_WITH_PADDING
++// #define USER_GET_PSNR_TEST
 +
 +/*系统声明的全局变量 */
 +extern char *optarg;
@@ -3045,6 +3046,13 @@ index 0000000..1055e7d
 +                                     ofmt_ctx[chan]->streams[0]->time_base);
 +        }
 +
++#ifdef USER_GET_PSNR_TEST
++        PsnrSsimInfo info;
++        avcodec_vastapi_get_psnr(encoder_ctx[chan], 0, &info);
++        av_log(encoder_ctx[chan], AV_LOG_ERROR,
++            "display_order %ld  psnr=%lf %lf %lf %lf ssim=%lf %lf %lf %lf\n",
++            info.display_order, info.psnr[0], info.psnr[1], info.psnr[2], info.psnr[3], info.ssim[0], info.ssim[1], info.ssim[2], info.ssim[3]);
++#endif
 +        if ((ret = av_interleaved_write_frame(ofmt_ctx[chan], &enc_pkt)) < 0) {
 +            fprintf(stderr, "Error during writing data to output file. Error code: %s line: %d\n", av_err2str(ret),
 +                    __LINE__);
@@ -7374,10 +7382,10 @@ index 0000000..a813187
 +#endif /* AVCODEC_VASTAPI_DECODE_H */
 diff --git a/libavcodec/vastapi_encode.c b/libavcodec/vastapi_encode.c
 new file mode 100755
-index 0000000..d7a6524
+index 0000000..bc47b51
 --- /dev/null
 +++ b/libavcodec/vastapi_encode.c
-@@ -0,0 +1,5074 @@
+@@ -0,0 +1,5091 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -7533,7 +7541,7 @@ index 0000000..d7a6524
 +static int vastapi_encode_head_issue(AVCodecContext *avctx, VASTAPIEncodePicture *pic);
 +
 +static int vastapi_get_psnr(VASTAPIEncodeContext *ctx, VASTDisplay display,
-+                     int64_t display_order, int64_t encode_order, int flush_lookahead)
++                     int64_t display_order, int64_t encode_order, int flush_lookahead, PsnrSsimInfo *info)
 +{
 +    VastapiFunctions          *func    = (VastapiFunctions *)ctx->vst_func;
 +    int                   max_value;
@@ -7602,6 +7610,13 @@ index 0000000..d7a6524
 +        err = -1/*AVERROR(EIO)*/;
 +        return err;
 +    }
++
++    if (info) {
++        memcpy(&info->psnr, psnr, sizeof(psnr));
++        memcpy(&info->ssim, ssim, sizeof(ssim));
++        info->display_order = psnr_buffer[flush_lookahead * 6 + 6];
++    }
++
 +    return 0;
 +}
 +
@@ -7661,7 +7676,7 @@ index 0000000..d7a6524
 +        case VAENC_CMDTYPE_PSNR:
 +        {
 +            VASTAPIPsnrCmd *cmd = (VASTAPIPsnrCmd *)arg;
-+            vastapi_get_psnr(cmd->ctx, cmd->display,cmd->display_order, cmd->encode_order,cmd->flush_lookahead);
++            vastapi_get_psnr(cmd->ctx, cmd->display,cmd->display_order, cmd->encode_order,cmd->flush_lookahead, NULL);
 +            break;
 +        }
 +        default :break;
@@ -7725,7 +7740,7 @@ index 0000000..d7a6524
 +    VASTAPIEncodeContext      *ctx     = avctx->priv_data;
 +    VastapiFunctions          *func    = (VastapiFunctions *)ctx->vst_func;
 +    VASTDisplay                display = AVVASTAPIDeviceContextPtr(ctx->hwctx)->display;
-+    void                      *opaque  = AVFramePtr(pic->input_image)->opaque;
++    //void                      *opaque  = AVFramePtr(pic->input_image)->opaque;
 +    VASTAPIEncodeSlice        *slice;
 +    VASTStatus                 vas;
 +    int                        err, i;
@@ -7743,7 +7758,7 @@ index 0000000..d7a6524
 +        av_log(avctx, AV_LOG_DEBUG, "No reference pictures.\n");
 +    } else {
 +        av_log(avctx, AV_LOG_DEBUG, "Refers to:");
-+        for (i = 0; i < pic->nb_refs; i++) {
++        for (i = 0; i < pic->nb_refs && pic->refs[i]; i++) {
 +            av_log(avctx, AV_LOG_DEBUG, " %" PRId64 "/%" PRId64, pic->refs[i]->display_order,
 +                   pic->refs[i]->encode_order);
 +        }
@@ -7839,7 +7854,7 @@ index 0000000..d7a6524
 +        break;
 +    }
 +
-+    err = func->vastapiEncIssuePrep(ctx, display, pic, sd_list, nb_side_data, opaque, FF_LT(N500), avctx->frame_num,
++    err = func->vastapiEncIssuePrep(ctx, display, pic, sd_list, nb_side_data, AVFramePtr(pic->input_image)->opaque, FF_LT(N500), avctx->frame_num,
 +                                    avctx->width, avctx->height);
 +    if (err != 0)
 +        goto fail;
@@ -8436,7 +8451,9 @@ index 0000000..d7a6524
 +    av_packet_free(&tmppkt);
 +    free(new_av1_pkt);
 +
-+    if ((ctx->vast_param->lookaheadDepth == 0) && (ctx->vast_param->multimode != VA_MULTI_CORE_MODE))
++    if ((ctx->vast_param->lookaheadDepth == 0) && (ctx->vast_param->multimode != VA_MULTI_CORE_MODE ||
++        (ctx->vast_param->multimode == VA_MULTI_CORE_MODE && 
++        (ctx->ff_param.width * ctx->ff_param.height < 256 * 256 && ctx->vast_param->lookaheadDepth == 0))))
 +        ctx->flush_pkt_flag = (eos_flag == 0) ? 0 : 1;
 +
 +    av_log(avctx, AV_LOG_DEBUG, "av1s Output packet: pts %" PRId64 " dts %" PRId64 ".\n", pkt->pts, pkt->dts);
@@ -8656,13 +8673,19 @@ index 0000000..d7a6524
 +            return AVERROR(EAGAIN);
 +    }
 +    if (ctx->flush_pkt_flag &&
-+        (ctx->vast_param->lookaheadDepth > 0 || ctx->vast_param->multimode == VA_MULTI_CORE_MODE)) {
++        (ctx->vast_param->lookaheadDepth > 0 || 
++        (ctx->vast_param->multimode == VA_MULTI_CORE_MODE 
++        && ((ctx->ff_param.width * ctx->ff_param.height > 256 * 256 && ctx->vast_param->lookaheadDepth == 0) ||
++        (ctx->ff_param.width * ctx->ff_param.height > 512 * 512 && ctx->vast_param->lookaheadDepth > 0))))) {
 +            err = func->vastapiEncFlushEncoder(ctx, pkt);         
 +        return err;
 +    }
 +
++    // printf("111 ctx->encodePktQ.length=%d\n",ctx->encodePktQ.length);
 +    if ((avctx->codec_id == AV_CODEC_ID_AV1) && (ctx->flush_pkt_flag == 1) && (ctx->encodePktQ.length > 0) &&
-+        (ctx->vast_param->lookaheadDepth == 0 && ctx->vast_param->multimode != VA_MULTI_CORE_MODE)) {
++        (ctx->vast_param->lookaheadDepth == 0 && (ctx->vast_param->multimode != VA_MULTI_CORE_MODE || 
++        (ctx->vast_param->multimode == VA_MULTI_CORE_MODE && 
++            (ctx->ff_param.width * ctx->ff_param.height < 256 * 256 && ctx->vast_param->lookaheadDepth == 0))))) {
 +        struct av1_pkt *new_av1_pkt = (struct av1_pkt *)v_queue_get(&ctx->encodePktQ);
 +        AVPacket       *tmppkt      = new_av1_pkt->pkt;
 +        av_packet_unref(pkt);
@@ -8758,10 +8781,10 @@ index 0000000..d7a6524
 +    VASTStatus            vas;
 +    AVBufferRef          *ref;
 +
-+    vas = func->vastapiEncAllocOutputBuff(ctx, display, avctx->codec_id == AV_CODEC_ID_AV1, avctx->width, avctx->width,
++    vas = func->vastapiEncAllocOutputBuff(ctx, display, avctx->codec_id == AV_CODEC_ID_AV1, avctx->width, avctx->height,
 +                                          &buffer_id);
 +    if (vas != VAST_STATUS_SUCCESS) {
-+        av_log(avctx, AV_LOG_ERROR, "Failed to create bitstream output buffer: %d (%s).\n", vas);
++        av_log(avctx, AV_LOG_ERROR, "Failed to create bitstream output buffer: %d .\n", vas);
 +        return NULL;
 +    }
 +
@@ -8868,14 +8891,16 @@ index 0000000..d7a6524
 +
 +static int ff_vastapi_encode_get_psnr(const AVCodecContext *avctx, int lookahead_size, PsnrSsimInfo *info)
 +{
-+    int err;
-+    int max_value;
-+    double *psnr_buffer = NULL;
-+    double mse_y, mse_u, mse_v, mse_avg;
-+    VASTAPIEncodeContext *ctx = avctx->priv_data;
-+    VASTStatus vas = 0;
++    VASTAPIEncodeContext *ctx = NULL;
 +
-+    return vas;
++    if (!avctx || !avctx->priv_data || !info) {
++        av_log(avctx, AV_LOG_ERROR,"error, get psnr invalid input, info=%p avctx=%p\n", info, avctx);
++        return -1;
++    }
++
++    ctx = avctx->priv_data;
++
++    return vastapi_get_psnr(ctx, ((AVVASTAPIDeviceContext *)ctx->hwctx)->display, 0, 0, lookahead_size, info);
 +}
 +
 +// vastai reset
