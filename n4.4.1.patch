@@ -6378,6 +6378,43 @@ index afb117c..7c56491 100644
                          NULL
                      },
  };
+diff --git a/libavcodec/pthread_frame.c b/libavcodec/pthread_frame.c
+index 9176027..6009d2f 100644
+--- a/libavcodec/pthread_frame.c
++++ b/libavcodec/pthread_frame.c
+@@ -896,6 +896,23 @@ int ff_frame_thread_init(AVCodecContext *avctx)
+ 
+     if (!thread_count) {
+         int nb_cpus = av_cpu_count();
++        #if CONFIG_VASTAPI
++        const AVCodecHWConfig *config;
++        enum AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
++        int i;
++        if(codec){
++            for (i = 0;; i++) {
++                config = avcodec_get_hw_config(codec, i);
++                if (!config)
++                    break;
++                type = config->device_type;
++                break;
++            }
++        }
++        if(AV_HWDEVICE_TYPE_VASTAPI == type){
++            nb_cpus = 1;
++        }
++        #endif
+         // use number of cores + 1 as thread count if there is more than one
+         if (nb_cpus > 1)
+             thread_count = avctx->thread_count = FFMIN(nb_cpus + 1, MAX_AUTO_THREADS);
+@@ -907,7 +924,7 @@ int ff_frame_thread_init(AVCodecContext *avctx)
+         avctx->active_thread_type = 0;
+         return 0;
+     }
+-
++    
+     avctx->internal->thread_ctx = fctx = av_mallocz(sizeof(FrameThreadContext));
+     if (!fctx)
+         return AVERROR(ENOMEM);
 diff --git a/libavcodec/utils.c b/libavcodec/utils.c
 old mode 100644
 new mode 100755

@@ -6344,6 +6344,43 @@ index f5ad325..63df998 100644
                          NULL
                      },
  };
+diff --git a/libavcodec/pthread_frame.c b/libavcodec/pthread_frame.c
+index 43d6cc8..8a28139 100644
+--- a/libavcodec/pthread_frame.c
++++ b/libavcodec/pthread_frame.c
+@@ -871,6 +871,23 @@ int ff_frame_thread_init(AVCodecContext *avctx)
+ 
+     if (!thread_count) {
+         int nb_cpus = av_cpu_count();
++        #if CONFIG_VASTAPI
++        const AVCodecHWConfig *config;
++        enum AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
++        int i;
++        if(codec){
++            for (i = 0;; i++) {
++                config = avcodec_get_hw_config(codec, i);
++                if (!config)
++                    break;
++                type = config->device_type;
++                break;
++            }
++        }
++        if(AV_HWDEVICE_TYPE_VASTAPI == type){
++            nb_cpus = 1;
++        }
++        #endif
+         // use number of cores + 1 as thread count if there is more than one
+         if (nb_cpus > 1)
+             thread_count = avctx->thread_count = FFMIN(nb_cpus + 1, MAX_AUTO_THREADS);
+@@ -882,7 +899,7 @@ int ff_frame_thread_init(AVCodecContext *avctx)
+         avctx->active_thread_type = 0;
+         return 0;
+     }
+-
++    
+     avctx->internal->thread_ctx = fctx = av_mallocz(sizeof(FrameThreadContext));
+     if (!fctx)
+         return AVERROR(ENOMEM);
 diff --git a/libavcodec/utils.c b/libavcodec/utils.c
 old mode 100644
 new mode 100755
@@ -16078,11 +16115,11 @@ index e626649..8fd045d 100644
  extern const HWContextType ff_hwcontext_type_videotoolbox;
  extern const HWContextType ff_hwcontext_type_mediacodec;
 diff --git a/libavutil/hwcontext_vastapi.c b/libavutil/hwcontext_vastapi.c
-new file mode 100644
-index 0000000..d914a24
+new file mode 100755
+index 0000000..40fe1f4
 --- /dev/null
 +++ b/libavutil/hwcontext_vastapi.c
-@@ -0,0 +1,1316 @@
+@@ -0,0 +1,1321 @@
 +/*
 + * This file is part of FFmpeg.
 + *
@@ -16417,7 +16454,12 @@ index 0000000..d914a24
 +    dst->linesize[2] = image.pitches[2];
 +    dst->width       = image.width;
 +    dst->height      = image.height;
++#ifdef VASTAI_ZERO_COPY    
++    if (dst->format == AV_PIX_FMT_NONE)
++        dst->format = hwfc->sw_format;
++#else
 +    dst->format      = AV_PIX_FMT_NV12;
++#endif
 +#ifdef VASTAI_ZERO_COPY    
 +    dst->data[1] = dst->data[0] + image.offsets[1];
 +#else    

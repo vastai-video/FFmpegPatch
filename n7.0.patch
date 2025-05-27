@@ -6215,114 +6215,6 @@ index 7fc9737..684e460 100644
      if (CONFIG_FRAME_THREAD_ENCODER) {
          ret = ff_frame_thread_encoder_init(avctx);
          if (ret < 0)
-diff --git a/libavcodec/frame_thread_encoder.c b/libavcodec/frame_thread_encoder.c
-index cda5158..17712e6 100644
---- a/libavcodec/frame_thread_encoder.c
-+++ b/libavcodec/frame_thread_encoder.c
-@@ -28,6 +28,7 @@
- #include "libavutil/thread.h"
- #include "avcodec.h"
- #include "avcodec_internal.h"
-+#include "codec_par.h"
- #include "encode.h"
- #include "internal.h"
- #include "pthread_internal.h"
-@@ -111,8 +112,7 @@ static void * attribute_align_arg worker(void *v){
-         pthread_mutex_unlock(&c->finished_task_mutex);
-     }
- end:
--    ff_codec_close(avctx);
--    av_freep(&avctx);
-+    avcodec_free_context(&avctx);
-     return NULL;
- }
- 
-@@ -121,6 +121,7 @@ av_cold int ff_frame_thread_encoder_init(AVCodecContext *avctx)
-     int i=0;
-     ThreadContext *c;
-     AVCodecContext *thread_avctx = NULL;
-+    AVCodecParameters *par = NULL;
-     int ret;
- 
-     if(   !(avctx->thread_type & FF_THREAD_FRAME)
-@@ -194,18 +195,27 @@ av_cold int ff_frame_thread_encoder_init(AVCodecContext *avctx)
-         }
-     }
- 
-+    par = avcodec_parameters_alloc();
-+    if (!par) {
-+        ret = AVERROR(ENOMEM);
-+        goto fail;
-+    }
-+
-+    ret = avcodec_parameters_from_context(par, avctx);
-+    if (ret < 0)
-+        goto fail;
-+
-     for(i=0; i<avctx->thread_count ; i++){
--        void *tmpv;
-         thread_avctx = avcodec_alloc_context3(avctx->codec);
-         if (!thread_avctx) {
-             ret = AVERROR(ENOMEM);
-             goto fail;
-         }
--        tmpv = thread_avctx->priv_data;
--        *thread_avctx = *avctx;
--        thread_avctx->priv_data = tmpv;
--        thread_avctx->internal = NULL;
--        thread_avctx->hw_frames_ctx = NULL;
-+
-+        ret = avcodec_parameters_to_context(thread_avctx, par);
-+        if (ret < 0)
-+            goto fail;
-+
-         ret = av_opt_copy(thread_avctx, avctx);
-         if (ret < 0)
-             goto fail;
-@@ -217,6 +227,26 @@ av_cold int ff_frame_thread_encoder_init(AVCodecContext *avctx)
-         thread_avctx->thread_count = 1;
-         thread_avctx->active_thread_type &= ~FF_THREAD_FRAME;
- 
-+#define DUP_MATRIX(m)                                                       \
-+        if (avctx->m) {                                                     \
-+            thread_avctx->m = av_memdup(avctx->m, 64 * sizeof(*avctx->m));  \
-+            if (!thread_avctx->m) {                                         \
-+                ret = AVERROR(ENOMEM);                                      \
-+                goto fail;                                                  \
-+            }                                                               \
-+        }
-+        DUP_MATRIX(intra_matrix);
-+        DUP_MATRIX(chroma_intra_matrix);
-+        DUP_MATRIX(inter_matrix);
-+
-+#undef DUP_MATRIX
-+
-+        thread_avctx->opaque            = avctx->opaque;
-+        thread_avctx->get_encode_buffer = avctx->get_encode_buffer;
-+        thread_avctx->execute           = avctx->execute;
-+        thread_avctx->execute2          = avctx->execute2;
-+        thread_avctx->stats_in          = avctx->stats_in;
-+
-         if ((ret = avcodec_open2(thread_avctx, avctx->codec, NULL)) < 0)
-             goto fail;
-         av_assert0(!thread_avctx->internal->frame_thread_encoder);
-@@ -227,12 +257,14 @@ av_cold int ff_frame_thread_encoder_init(AVCodecContext *avctx)
-         }
-     }
- 
-+    avcodec_parameters_free(&par);
-+
-     avctx->active_thread_type = FF_THREAD_FRAME;
- 
-     return 0;
- fail:
--    ff_codec_close(thread_avctx);
--    av_freep(&thread_avctx);
-+    avcodec_parameters_free(&par);
-+    avcodec_free_context(&thread_avctx);
-     avctx->thread_count = i;
-     av_log(avctx, AV_LOG_ERROR, "ff_frame_thread_encoder_init failed\n");
-     ff_frame_thread_encoder_free(avctx);
 diff --git a/libavcodec/h264_slice.c b/libavcodec/h264_slice.c
 index e9a404e..9512a64 100644
 --- a/libavcodec/h264_slice.c
@@ -6474,23 +6366,34 @@ index c9409ea..3b46683 100644
                      },
  };
 diff --git a/libavcodec/pthread_frame.c b/libavcodec/pthread_frame.c
-index fd356bd..a68e845 100644
+index fd356bd..8a85b9f 100644
 --- a/libavcodec/pthread_frame.c
 +++ b/libavcodec/pthread_frame.c
-@@ -842,6 +842,12 @@ int ff_frame_thread_init(AVCodecContext *avctx)
+@@ -842,6 +842,23 @@ int ff_frame_thread_init(AVCodecContext *avctx)
  
      if (!thread_count) {
          int nb_cpus = av_cpu_count();
-+#if CONFIG_VASTAPI
-+        enum AVPixelFormat pix_fmts[2] = {AV_PIX_FMT_VASTAPI,AV_PIX_FMT_NONE}; 
-+        if(avctx->get_format(avctx,pix_fmts) == AV_PIX_FMT_VASTAPI){
++        #if CONFIG_VASTAPI
++        const AVCodecHWConfig *config;
++        enum AVHWDeviceType type = AV_HWDEVICE_TYPE_NONE;
++        int i;
++        if(codec){
++            for (i = 0;; i++) {
++                config = avcodec_get_hw_config(codec, i);
++                if (!config)
++                    break;
++                type = config->device_type;
++                break;
++            }
++        }
++        if(AV_HWDEVICE_TYPE_VASTAPI == type){
 +            nb_cpus = 1;
 +        }
-+#endif
++        #endif
          // use number of cores + 1 as thread count if there is more than one
          if (nb_cpus > 1)
              thread_count = avctx->thread_count = FFMIN(nb_cpus + 1, MAX_AUTO_THREADS);
-@@ -853,7 +859,7 @@ int ff_frame_thread_init(AVCodecContext *avctx)
+@@ -853,7 +870,7 @@ int ff_frame_thread_init(AVCodecContext *avctx)
          avctx->active_thread_type = 0;
          return 0;
      }
